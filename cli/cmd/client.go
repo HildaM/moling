@@ -25,8 +25,13 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"os"
-	"time"
 )
+
+func init() {
+	clientCmd.PersistentFlags().BoolVar(&list, "list", false, "List the current installed MCP clients")
+	clientCmd.PersistentFlags().BoolVarP(&install, "install", "i", false, "Add MoLing MCP Server configuration to the currently installed MCP clients on this computer. default is all")
+	rootCmd.AddCommand(clientCmd)
+}
 
 var clientCmd = &cobra.Command{
 	Use:   "client",
@@ -44,35 +49,67 @@ var (
 	install bool
 )
 
-// ClientCommandFunc executes the "config" command.
+// ClientCommandFunc executes the "client" command.
 func ClientCommandFunc(command *cobra.Command, args []string) error {
-	logger := initLogger(mlConfig.BasePath)
-	consoleWriter := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
-	multi := zerolog.MultiLevelWriter(consoleWriter, logger)
-	logger = zerolog.New(multi).With().Timestamp().Logger()
+	// 1. 设置日志
+	logger := setupLogger(mlConfig.BasePath)
 	mlConfig.SetLogger(logger)
-	logger.Debug().Msg("Start to show MCP Clients")
-	mcpConfig := client.NewMCPServerConfig(CliDescription, CliName, MCPServerName)
-	exePath, err := os.Executable()
-	if err == nil {
-		logger.Debug().Str("exePath", exePath).Msg("executable path, will use this path to find the config file")
-		mcpConfig.Command = exePath
+	logger.Debug().Msg("Starting MCP client management")
+
+	// 2. 准备 MCP 服务器配置
+	mcpConfig, err := prepareMCPServerConfig(logger)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to prepare MCP server configuration")
+		return err
 	}
-	cm := client.NewManager(logger, mcpConfig)
+
+	// 3. 创建客户端管理器
+	clientManager := client.NewManager(logger, mcpConfig)
+
+	// 4. 根据命令行参数执行对应操作
 	if install {
-		logger.Info().Msg("Start to add MCP Server configuration into MCP Clients.")
-		cm.SetupConfig()
-		logger.Info().Msg("Add MCP Server configuration into MCP Clients successfully.")
-		return nil
+		return installMCPConfig(clientManager, logger)
 	}
-	logger.Info().Msg("Start to list MCP Clients")
-	cm.ListClient()
-	logger.Info().Msg("List MCP Clients successfully.")
+	return listMCPClients(clientManager, logger)
+}
+
+// prepareMCPServerConfig 准备 MCP 服务器配置
+func prepareMCPServerConfig(logger zerolog.Logger) (client.MCPServerConfig, error) {
+	// 创建基本配置
+	mcpConfig := client.NewMCPServerConfig(CliDescription, CliName, MCPServerName)
+
+	// 获取可执行文件路径
+	exePath, err := os.Executable()
+	if err != nil {
+		logger.Warn().Err(err).Msg("Unable to determine executable path, using default command name")
+		return mcpConfig, nil
+	}
+
+	// 设置命令为可执行文件的完整路径
+	logger.Debug().Str("exePath", exePath).Msg("Using executable path for MCP configuration")
+	mcpConfig.Command = exePath
+
+	return mcpConfig, nil
+}
+
+// installMCPConfig 安装 MCP 配置到客户端
+func installMCPConfig(manager *client.Manager, logger zerolog.Logger) error {
+	logger.Info().Msg("Installing MCP Server configuration into MCP clients")
+
+	// 执行配置安装
+	manager.SetupConfig()
+
+	logger.Info().Msg("MCP Server configuration successfully installed")
 	return nil
 }
 
-func init() {
-	clientCmd.PersistentFlags().BoolVar(&list, "list", false, "List the current installed MCP clients")
-	clientCmd.PersistentFlags().BoolVarP(&install, "install", "i", false, "Add MoLing MCP Server configuration to the currently installed MCP clients on this computer. default is all")
-	rootCmd.AddCommand(clientCmd)
+// listMCPClients 列出可用的 MCP 客户端
+func listMCPClients(manager *client.Manager, logger zerolog.Logger) error {
+	logger.Info().Msg("Listing available MCP clients")
+
+	// 列出客户端
+	manager.ListClient()
+
+	logger.Info().Msg("MCP clients listing completed")
+	return nil
 }

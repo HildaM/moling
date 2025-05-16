@@ -24,10 +24,12 @@ import (
 
 // mlsCommandPreFunc is a pre-run function for the MoLing command.
 func mlsCommandPreFunc(cmd *cobra.Command, args []string) error {
+	// 1. 创建基础目录
 	err := utils.CreateDirectory(mlConfig.BasePath)
 	if err != nil {
 		return err
 	}
+	// 2. 创建子目录
 	for _, dirName := range mlDirectories {
 		err = utils.CreateDirectory(filepath.Join(mlConfig.BasePath, dirName))
 		if err != nil {

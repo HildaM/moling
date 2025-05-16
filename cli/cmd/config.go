@@ -22,13 +22,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gojue/moling/services"
-	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"os"
 	"path/filepath"
-	"time"
 )
 
+func init() {
+	rootCmd.AddCommand(configCmd)
+}
+
+// configCmd 显示当前服务列表的配置
 var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Show the configuration of the current service list",
@@ -37,70 +40,109 @@ var configCmd = &cobra.Command{
 	RunE: ConfigCommandFunc,
 }
 
-var (
-	initial bool
-)
-
 // ConfigCommandFunc executes the "config" command.
 func ConfigCommandFunc(command *cobra.Command, args []string) error {
-	var err error
-	logger := initLogger(mlConfig.BasePath)
-	consoleWriter := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
-	multi := zerolog.MultiLevelWriter(consoleWriter, logger)
-	logger = zerolog.New(multi).With().Timestamp().Logger()
+	// 1. 设置日志
+	logger := setupLogger(mlConfig.BasePath)
 	mlConfig.SetLogger(logger)
-	logger.Info().Msg("Start to show config")
-	ctx := context.WithValue(context.Background(), services.MoLingConfigKey, mlConfig)
-	ctx = context.WithValue(ctx, services.MoLingLoggerKey, logger)
 
-	// 当前配置文件检测
-	hasConfig := false
-	var nowConfig []byte
-	nowConfigJson := make(map[string]interface{})
+	// 2. 创建上下文
+	ctx := createContext(logger)
+
+	// 3. 加载现有配置文件(如果存在)
 	configFilePath := filepath.Join(mlConfig.BasePath, mlConfig.ConfigFile)
-	if nowConfig, err = os.ReadFile(configFilePath); err == nil {
-		hasConfig = true
-	}
-	if hasConfig {
-		err = json.Unmarshal(nowConfig, &nowConfigJson)
-		if err != nil {
-			return fmt.Errorf("Error unmarshaling JSON: %v, payload:%s\n", err, string(nowConfig))
-		}
+	existingConfig, hasConfig, err := loadExistingConfig(configFilePath)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to load config")
+		return err
 	}
 
+	// 4. 构建完整配置(合并全局配置与各服务配置)
+	configData, err := buildConfigData(ctx, existingConfig)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to build config")
+		return err
+	}
+
+	// 5. 格式化配置数据为美观的JSON
+	formattedJson, err := formatConfigJson(configData)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to format config")
+		return err
+	}
+
+	// 6. 如果配置文件不存在，则创建
+	if err := saveConfigIfNeeded(formattedJson, configFilePath, hasConfig); err != nil {
+		logger.Error().Err(err).Msg("Failed to save config")
+		return err
+	}
+
+	// 7. 输出配置信息
+	logger.Info().Str("config", configFilePath).Msg("Current loaded configuration file path")
+	logger.Info().Msg("You can modify the configuration file to change the settings.")
+	logger.Info().Msgf("Configuration details: \n%s", formattedJson)
+
+	return nil
+}
+
+// loadExistingConfig 加载现有配置文件(如果存在)
+func loadExistingConfig(configFilePath string) (map[string]interface{}, bool, error) {
+	// 尝试读取配置文件
+	configData, err := os.ReadFile(configFilePath)
+	if err != nil {
+		return nil, false, nil
+	}
+
+	// 解析配置文件内容为JSON
+	var configJson map[string]interface{}
+	if err := json.Unmarshal(configData, &configJson); err != nil {
+		return nil, true, fmt.Errorf("invalid JSON in config file: %v", err)
+	}
+	return configJson, true, nil
+}
+
+// buildConfigData 构建完整配置，包括全局配置和各服务配置
+func buildConfigData(ctx context.Context, existingConfig map[string]interface{}) (string, error) {
+	// 创建配置缓冲区
 	bf := bytes.Buffer{}
 	bf.WriteString("\n{\n")
 
-	// 写入GlobalConfig
+	// 添加全局配置
+	if err := addGlobalConfig(&bf); err != nil {
+		return "", err
+	}
+
+	// 添加各服务配置
+	if err := addServiceConfigs(ctx, &bf, existingConfig); err != nil {
+		return "", err
+	}
+
+	bf.WriteString("}\n")
+	return bf.String(), nil
+}
+
+// addGlobalConfig 添加全局配置到缓冲区
+func addGlobalConfig(bf *bytes.Buffer) error {
 	mlConfigJson, err := json.Marshal(mlConfig)
 	if err != nil {
-		return fmt.Errorf("Error marshaling GlobalConfig: %v\n", err)
+		return fmt.Errorf("Error marshaling GlobalConfig: %v", err)
 	}
 	bf.WriteString("\t\"MoLingConfig\":\n")
 	bf.WriteString(fmt.Sprintf("\t%s,\n", mlConfigJson))
+	return nil
+}
+
+// addServiceConfigs 添加各服务配置到缓冲区
+func addServiceConfigs(ctx context.Context, bf *bytes.Buffer, existingConfig map[string]interface{}) error {
 	first := true
 	for srvName, nsv := range services.ServiceList() {
-		// 获取服务对应的配置
-		cfg, ok := nowConfigJson[string(srvName)].(map[string]interface{})
-
-		srv, err := nsv(ctx)
+		// 初始化服务
+		srv, err := initSingleService(ctx, srvName, nsv, existingConfig)
 		if err != nil {
 			return err
 		}
-		// srv Loadconfig
-		if ok {
-			err = srv.LoadConfig(cfg)
-			if err != nil {
-				return fmt.Errorf("Error loading config for service %s: %v\n", srv.Name(), err)
-			}
-		} else {
-			logger.Debug().Str("service", string(srv.Name())).Msg("Service not found in config, using default config")
-		}
-		// srv Init
-		err = srv.Init()
-		if err != nil {
-			return fmt.Errorf("Error initializing service %s: %v\n", srv.Name(), err)
-		}
+
+		// 添加服务配置到缓冲区
 		if !first {
 			bf.WriteString(",\n")
 		}
@@ -108,38 +150,31 @@ func ConfigCommandFunc(command *cobra.Command, args []string) error {
 		bf.WriteString(fmt.Sprintf("\t%s\n", srv.Config()))
 		first = false
 	}
-	bf.WriteString("}\n")
-	// 解析原始 JSON 字符串
-	var data interface{}
-	err = json.Unmarshal(bf.Bytes(), &data)
-	if err != nil {
-		return fmt.Errorf("Error unmarshaling JSON: %v, payload:%s\n", err, bf.String())
-	}
-
-	// 格式化 JSON
-	formattedJson, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return fmt.Errorf("Error marshaling JSON: %v\n", err)
-	}
-
-	// 如果不存在配置文件
-	if !hasConfig {
-		logger.Info().Msgf("Configuration file %s does not exist. Creating a new one.", configFilePath)
-		err = os.WriteFile(configFilePath, formattedJson, 0644)
-		if err != nil {
-			return fmt.Errorf("Error writing configuration file: %v\n", err)
-		}
-		logger.Info().Msgf("Configuration file %s created successfully.", configFilePath)
-	}
-	logger.Info().Str("config", configFilePath).Msg("Current loaded configuration file path")
-	logger.Info().Msg("You can modify the configuration file to change the settings.")
-	if !initial {
-		logger.Info().Msgf("Configuration details: \n%s\n", formattedJson)
-	}
 	return nil
 }
 
-func init() {
-	configCmd.PersistentFlags().BoolVar(&initial, "init", false, fmt.Sprintf("Save configuration to %s", filepath.Join(mlConfig.BasePath, mlConfig.ConfigFile)))
-	rootCmd.AddCommand(configCmd)
+// formatConfigJson 格式化配置数据为美观的JSON
+func formatConfigJson(configData string) ([]byte, error) {
+	var jsonObj interface{}
+	if err := json.Unmarshal([]byte(configData), &jsonObj); err != nil {
+		return nil, fmt.Errorf("Error unmarshaling JSON: %v, payload:%s", err, configData)
+	}
+
+	formattedJson, err := json.MarshalIndent(jsonObj, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("Error marshaling JSON: %v", err)
+	}
+	return formattedJson, nil
+}
+
+// saveConfigIfNeeded 如果配置文件不存在，则创建
+// 首次运行自动创建配置：当用户首次运行 moling config 命令时，会自动创建一个包含默认配置的配置文件
+// 避免覆盖用户自定义配置：如果配置文件已存在，会完全跳过写入操作，保护用户的自定义设置
+func saveConfigIfNeeded(formattedJson []byte, configFilePath string, hasConfig bool) error {
+	if !hasConfig {
+		if err := os.WriteFile(configFilePath, formattedJson, 0644); err != nil {
+			return fmt.Errorf("Error writing configuration file: %v", err)
+		}
+	}
+	return nil
 }
