@@ -37,6 +37,9 @@ var (
 	ErrConfigNotLoaded = errors.New("config not loaded, please call LoadConfig() first")
 )
 
+// ServiceFactory 定义服务工厂函数的类型，用于创建服务实例
+type ServiceFactory func(ctx context.Context) (Service, error)
+
 // Service defines the interface for a service with various handlers and tools.
 type Service interface {
 	Ctx() context.Context

@@ -16,19 +16,15 @@
 
 package services
 
-import (
-	"context"
-)
-
-var serviceLists = make(map[MoLingServerType]func(ctx context.Context) (Service, error))
+var serviceLists = make(map[MoLingServerType]ServiceFactory)
 
 // RegisterServ register service
-func RegisterServ(n MoLingServerType, f func(ctx context.Context) (Service, error)) {
+func RegisterServ(n MoLingServerType, f ServiceFactory) {
 	//serviceLists = append(, f)
 	serviceLists[n] = f
 }
 
 // ServiceList  get service lists
-func ServiceList() map[MoLingServerType]func(ctx context.Context) (Service, error) {
+func ServiceList() map[MoLingServerType]ServiceFactory {
 	return serviceLists
 }

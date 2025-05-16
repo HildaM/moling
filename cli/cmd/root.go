@@ -29,102 +29,10 @@ import (
 	"os/signal"
 	"os/user"
 	"path/filepath"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
 )
-
-const (
-	CliName            = "moling"
-	CliNameZh          = "魔灵"
-	MCPServerName      = "MoLing MCP Server"
-	CliDescription     = "MoLing is a computer-use and browser-use based MCP server. It is a locally deployed, dependency-free office AI assistant."
-	CliDescriptionZh   = "MoLing（魔灵）是一款基于computer-use和浏browser-use的 MCP 服务器，它是一个本地部署、无依赖的办公 AI 助手。"
-	CliHomepage        = "https://gojue.cc/moling"
-	CliAuthor          = "CFC4N <cfc4ncs@gmail.com>"
-	CliGithubRepo      = "https://github.com/gojue/moling"
-	CliDescriptionLong = `
-MoLing is a computer-based MCP Server that implements system interaction through operating system APIs, enabling file system operations such as reading, writing, merging, statistics, and aggregation, as well as the ability to execute system commands. It is a dependency-free local office automation assistant.
-
-Requiring no installation of any dependencies, MoLing can be run directly and is compatible with multiple operating systems, including Windows, Linux, and macOS. This eliminates the hassle of dealing with environment conflicts involving Node.js, Python, and other development environments.
-
-Usage:
-  moling
-  moling -l 127.0.0.1:6789
-  moling -h
-  moling client -i
-  moling config 
-`
-	CliDescriptionLongZh = `MoLing（魔灵）是一个computer-use的MCP Server，基于操作系统API实现了系统交互，可以实现文件系统的读写、合并、统计、聚合等操作，也可以执行系统命令操作。是一个无需任何依赖的本地办公自动化助手。
-没有任何安装依赖，直接运行，兼容Windows、Linux、macOS等操作系统。再也不用苦恼NodeJS、Python等环境冲突等问题。
-
-Usage:
-  moling
-  moling -l 127.0.0.1:29118
-  moling -h
-  moling client -i
-  moling config 
-`
-)
-
-const (
-	MLConfigName = "config.json"     // config file name of MoLing Server
-	MLRootPath   = ".moling"         // config file name of MoLing Server
-	MLPidName    = "moling.pid"      // pid file name
-	LogFileName  = "moling.log"      //	log file name
-	MaxLogSize   = 1024 * 1024 * 512 // 512MB
-)
-
-var (
-	GitVersion = "unknown_arm64_v0.0.0_2025-03-22 20:08"
-	mlConfig   = &services.MoLingConfig{
-		Version:    GitVersion,
-		ConfigFile: filepath.Join("config", MLConfigName),
-		BasePath:   filepath.Join(os.TempDir(), MLRootPath), // will set in mlsCommandPreFunc
-	}
-
-	// mlDirectories is a list of directories to be created in the base path
-	mlDirectories = []string{
-		"logs",    // log file
-		"config",  // config file
-		"browser", // browser cache
-		"data",    // data
-		"cache",
-	}
-)
-
-// rootCmd represents the base command when called without any subcommands
-var rootCmd = &cobra.Command{
-	Use:        CliName,
-	Short:      CliDescription,
-	SuggestFor: []string{"molin", "moli", "mling"},
-
-	Long: CliDescriptionLong,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	RunE:              mlsCommandFunc,
-	PersistentPreRunE: mlsCommandPreFunc,
-}
-
-func usageFunc(c *cobra.Command) error {
-	return cobrautl.UsageFunc(c, GitVersion)
-}
-
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
-func Execute() {
-	rootCmd.SetUsageFunc(usageFunc)
-	rootCmd.SetHelpTemplate(`{{.UsageString}}`)
-	rootCmd.CompletionOptions.DisableDefaultCmd = true
-	rootCmd.Version = GitVersion
-	rootCmd.SetVersionTemplate(`{{with .Name}}{{printf "%s " .}}{{end}}{{printf "version:\t%s" .Version}}
-`)
-	err := rootCmd.Execute()
-	if err != nil {
-		os.Exit(1)
-	}
-}
 
 func init() {
 	// set default config file path
@@ -143,148 +51,185 @@ func init() {
 	rootCmd.SilenceUsage = true
 }
 
-// initLogger init logger
-func initLogger(mlDataPath string) zerolog.Logger {
-	var logger zerolog.Logger
-	var err error
-	logFile := filepath.Join(mlDataPath, "logs", LogFileName)
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	if mlConfig.Debug {
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	}
+// rootCmd represents the base command when called without any subcommands
+var rootCmd = &cobra.Command{
+	Use:        CliName,
+	Short:      CliDescription,
+	SuggestFor: []string{"molin", "moli", "mling"},
 
-	// 初始化 RotateWriter
-	rw, err := utils.NewRotateWriter(logFile, MaxLogSize) // 512MB 阈值
-	if err != nil {
-		panic(fmt.Sprintf("failed to open log file %s: %v", logFile, err))
-	}
-	logger = zerolog.New(rw).With().Timestamp().Logger()
-	logger.Info().Uint32("MaxLogSize", MaxLogSize).Msgf("Log files are automatically rotated when they exceed the size threshold, and saved to %s.1 and %s.2 respectively", LogFileName, LogFileName)
-	return logger
+	Long: CliDescriptionLong,
+	// Uncomment the following line if your bare application
+	// has an action associated with it:
+	RunE:              mlsCommandFunc,
+	PersistentPreRunE: mlsCommandPreFunc,
 }
 
+// Execute adds all child commands to the root command and sets flags appropriately.
+// This is called by main.main(). It only needs to happen once to the rootCmd.
+func Execute() {
+	// 设置使用说明
+	rootCmd.SetUsageFunc(func(c *cobra.Command) error {
+		return cobrautl.UsageFunc(c, GitVersion)
+	})
+	// 设置帮助模板
+	rootCmd.SetHelpTemplate(`{{.UsageString}}`)
+	// 禁用默认命令
+	rootCmd.CompletionOptions.DisableDefaultCmd = true
+	// 设置版本
+	rootCmd.Version = GitVersion
+	// 设置版本模板
+	rootCmd.SetVersionTemplate(`{{with .Name}}{{printf "%s " .}}{{end}}{{printf "version:\t%s" .Version}}
+`)
+
+	// 执行命令
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
+	}
+}
+
+// mlsCommandFunc 服务核心启动函数
 func mlsCommandFunc(command *cobra.Command, args []string) error {
-	loger := initLogger(mlConfig.BasePath)
-	mlConfig.SetLogger(loger)
-	var err error
-	var nowConfig []byte
-	var nowConfigJson map[string]interface{}
+	// 初始化日志
+	logger := initLogger(mlConfig.BasePath)
+	mlConfig.SetLogger(logger)
 
-	// 增加实例重复运行检测
+	// 检查运行实例和配置文件
 	pidFilePath := filepath.Join(mlConfig.BasePath, MLPidName)
-	loger.Info().Str("pid", pidFilePath).Msg("Starting MoLing MCP Server...")
-	err = utils.CreatePIDFile(pidFilePath)
-	if err != nil {
+	if err := checkRunningInstance(pidFilePath, logger); err != nil {
 		return err
 	}
 
-	// 当前配置文件检测
-	loger.Info().Str("ServerName", MCPServerName).Str("version", GitVersion).Msg("start")
+	// 加载配置文件
 	configFilePath := filepath.Join(mlConfig.BasePath, mlConfig.ConfigFile)
-	if nowConfig, err = os.ReadFile(configFilePath); err == nil {
-		err = json.Unmarshal(nowConfig, &nowConfigJson)
-		if err != nil {
-			return fmt.Errorf("Error unmarshaling JSON: %v, config file:%s\n", err, configFilePath)
-		}
-	}
-	loger.Info().Str("config_file", configFilePath).Msg("load config file")
-	ctx := context.WithValue(context.Background(), services.MoLingConfigKey, mlConfig)
-	ctx = context.WithValue(ctx, services.MoLingLoggerKey, loger)
-	ctxNew, cancelFunc := context.WithCancel(ctx)
-
-	var modules []string
-	if mlConfig.Module != "all" {
-		modules = strings.Split(mlConfig.Module, ",")
-	}
-	var srvs []services.Service
-	var closers = make(map[string]func() error)
-	for srvName, nsv := range services.ServiceList() {
-		if len(modules) > 0 {
-			if !utils.StringInSlice(string(srvName), modules) {
-				continue
-			}
-		}
-		cfg, ok := nowConfigJson[string(srvName)].(map[string]interface{})
-		srv, err := nsv(ctxNew)
-		if err != nil {
-			loger.Error().Err(err).Msgf("failed to create service %s", srv.Name())
-			break
-		}
-		if ok {
-			err = srv.LoadConfig(cfg)
-			if err != nil {
-				loger.Error().Err(err).Msgf("failed to load config for service %s", srv.Name())
-				break
-			}
-		}
-		err = srv.Init()
-		if err != nil {
-			loger.Error().Err(err).Msgf("failed to init service %s", srv.Name())
-			break
-		}
-		srvs = append(srvs, srv)
-		closers[string(srv.Name())] = srv.Close
-	}
-	// MCPServer
-	srv, err := services.NewMoLingServer(ctxNew, srvs, *mlConfig)
+	configJson, err := loadConfigFile(configFilePath, logger)
 	if err != nil {
-		loger.Error().Err(err).Msg("failed to create server")
-		cancelFunc()
 		return err
+	}
+
+	// 创建并启动服务
+	ctx := createContext(logger)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// 加载并初始化服务
+	servicesList, closers, err := initServices(ctx, configJson, logger)
+	if err != nil {
+		cancel()
+		return err
+	}
+
+	// 启动MCP服务器
+	_, err = startMoLingServer(ctx, servicesList, logger)
+	if err != nil {
+		cancel()
+		return err
+	}
+
+	// 等待信号并执行优雅关闭
+	return waitForShutdownSignal(cancel, closers, pidFilePath, logger)
+}
+
+// checkRunningInstance 检查是否有已运行的实例
+func checkRunningInstance(pidFilePath string, logger zerolog.Logger) error {
+	logger.Info().Str("pid", pidFilePath).Msg("Starting MoLing MCP Server...")
+	if err := utils.CreatePIDFile(pidFilePath); err != nil {
+		return err
+	}
+	return nil
+}
+
+// loadConfigFile 加载配置文件
+func loadConfigFile(configFilePath string, logger zerolog.Logger) (map[string]interface{}, error) {
+	logger.Info().Str("ServerName", MCPServerName).Str("version", GitVersion).Msg("start")
+
+	var configJson map[string]interface{}
+	configContent, err := os.ReadFile(configFilePath)
+	if err == nil {
+		if err = json.Unmarshal(configContent, &configJson); err != nil {
+			return nil, fmt.Errorf("Error unmarshaling JSON: %v, config file:%s", err, configFilePath)
+		}
+	}
+
+	logger.Info().Str("config_file", configFilePath).Msg("load config file")
+	return configJson, nil
+}
+
+// startMoLingServer 启动MoLing服务器
+func startMoLingServer(ctx context.Context, servicesList []services.Service, logger zerolog.Logger) (*services.MoLingServer, error) {
+	server, err := services.NewMoLingServer(ctx, servicesList, *mlConfig)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to create server")
+		return nil, err
 	}
 
 	go func() {
-		err = srv.Serve()
-		if err != nil {
-			loger.Error().Err(err).Msg("failed to start server")
-			cancelFunc()
-			return
+		if err := server.Serve(); err != nil {
+			logger.Error().Err(err).Msg("failed to start server")
 		}
 	}()
 
-	// 创建一个信号通道
+	return server, nil
+}
+
+// waitForShutdownSignal 等待关闭信号并优雅关闭服务
+func waitForShutdownSignal(cancelFunc context.CancelFunc, closers map[string]func() error, pidFilePath string, logger zerolog.Logger) error {
+	// 创建信号通道
 	sigChan := make(chan os.Signal, 2)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// 创建一个 goroutine 来判断父进程是否退出
-	// Claude Desktop 0.9.2 退出时，没有向MCP Server发送 SIGTERM信号，导致MCP 不能正常退出。
-	// fix https://github.com/gojue/moling/issues/32
-	go func() {
-		ppid := os.Getppid()
-		for {
-			time.Sleep(1 * time.Second)
-			newPpid := os.Getppid()
-			if newPpid == 1 {
-				loger.Info().Msgf("parent process changed,origin PPid:%d, New PPid:%d", ppid, newPpid)
-				loger.Warn().Msg("parent process exited")
-				sigChan <- syscall.SIGTERM
-				break
-			}
-		}
-	}()
+	// 监控父进程退出
+	go monitorParentProcess(sigChan, logger)
 
 	// 等待信号
 	_ = <-sigChan
-	loger.Info().Msg("Received signal, shutting down...")
+	logger.Info().Msg("Received signal, shutting down...")
 
-	// close all services
-	// close all services
+	// 优雅关闭所有服务
+	shutdownServices(closers, cancelFunc, logger)
+
+	// 清理PID文件
+	if err := utils.RemovePIDFile(pidFilePath); err != nil {
+		logger.Error().Err(err).Msgf("failed to remove pid file %s", pidFilePath)
+		return err
+	}
+
+	logger.Info().Msgf("removed pid file %s", pidFilePath)
+	logger.Info().Msg(" Bye!")
+	return nil
+}
+
+// monitorParentProcess 监控父进程是否退出
+func monitorParentProcess(sigChan chan<- os.Signal, logger zerolog.Logger) {
+	ppid := os.Getppid()
+	for {
+		time.Sleep(1 * time.Second)
+		newPpid := os.Getppid()
+		if newPpid == 1 {
+			logger.Info().Msgf("parent process changed, origin PPid:%d, New PPid:%d", ppid, newPpid)
+			logger.Warn().Msg("parent process exited")
+			sigChan <- syscall.SIGTERM
+			break
+		}
+	}
+}
+
+// shutdownServices 优雅关闭所有服务
+func shutdownServices(closers map[string]func() error, cancelFunc context.CancelFunc, logger zerolog.Logger) {
 	var wg sync.WaitGroup
 	done := make(chan struct{})
 
-	// 在goroutine中等待所有服务关闭
+	// 并行关闭所有服务
 	go func() {
-		for srvName, closer := range closers {
+		for serviceName, closer := range closers {
 			wg.Add(1)
 			go func(name string, closeFn func() error) {
 				defer wg.Done()
-				err := closeFn()
-				if err != nil {
-					loger.Error().Err(err).Msgf("failed to close service %s", name)
+				if err := closeFn(); err != nil {
+					logger.Error().Err(err).Msgf("failed to close service %s", name)
 				} else {
-					loger.Info().Msgf("service %s closed", name)
+					logger.Info().Msgf("service %s closed", name)
 				}
-			}(srvName, closer)
+			}(serviceName, closer)
 		}
 
 		// 等待所有服务关闭
@@ -292,21 +237,13 @@ func mlsCommandFunc(command *cobra.Command, args []string) error {
 		close(done)
 	}()
 
-	// 使用select等待完成或超时
+	// 等待服务关闭或超时
 	select {
 	case <-time.After(5 * time.Second):
 		cancelFunc()
-		loger.Info().Msg("timeout, all services closed forcefully")
+		logger.Info().Msg("timeout, all services closed forcefully")
 	case <-done:
 		cancelFunc()
-		loger.Info().Msg("all services closed")
+		logger.Info().Msg("all services closed gracefully")
 	}
-	err = utils.RemovePIDFile(pidFilePath)
-	if err != nil {
-		loger.Error().Err(err).Msgf("failed to remove pid file %s", pidFilePath)
-		return err
-	}
-	loger.Info().Msgf("removed pid file %s", pidFilePath)
-	loger.Info().Msg(" Bye!")
-	return nil
 }
