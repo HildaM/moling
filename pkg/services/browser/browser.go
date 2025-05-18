@@ -15,7 +15,7 @@
 // Repository: https://github.com/gojue/moling
 
 // Package services provides a set of services for the MoLing application.
-package services
+package browser
 
 import (
 	"context"
@@ -31,10 +31,15 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/gojue/moling/pkg/comm"
 	"github.com/gojue/moling/pkg/config"
+	"github.com/gojue/moling/pkg/services"
 	"github.com/gojue/moling/pkg/utils"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog"
 )
+
+func init() {
+	services.RegisterServ(BrowserServerName, NewBrowserServer)
+}
 
 const (
 	BrowserDataPath                         = "browser" // Path to store browser data
@@ -43,7 +48,7 @@ const (
 
 // BrowserServer represents the configuration for the browser service.
 type BrowserServer struct {
-	MLService
+	services.MLService
 	config       *BrowserConfig
 	name         string // The name of the service
 	cancelAlloc  context.CancelFunc
@@ -51,11 +56,14 @@ type BrowserServer struct {
 }
 
 // NewBrowserServer creates a new BrowserServer instance with the given context and configuration.
-func NewBrowserServer(ctx context.Context) (Service, error) {
+func NewBrowserServer(ctx context.Context) (services.Service, error) {
+	// 获取浏览器配置
 	bc := NewBrowserConfig()
 	globalConf := ctx.Value(comm.MoLingConfigKey).(*config.MoLingConfig)
 	bc.BrowserDataPath = filepath.Join(globalConf.BasePath, BrowserDataPath)
 	bc.DataPath = filepath.Join(globalConf.BasePath, "data")
+
+	// 获取日志记录器
 	logger, ok := ctx.Value(comm.MoLingLoggerKey).(zerolog.Logger)
 	if !ok {
 		return nil, fmt.Errorf("BrowserServer: invalid logger type: %T", ctx.Value(comm.MoLingLoggerKey))
@@ -63,36 +71,31 @@ func NewBrowserServer(ctx context.Context) (Service, error) {
 	loggerNameHook := zerolog.HookFunc(func(e *zerolog.Event, level zerolog.Level, msg string) {
 		e.Str("Service", string(BrowserServerName))
 	})
+
+	// 创建浏览器服务实例
 	bs := &BrowserServer{
-		MLService: NewMLService(ctx, logger.Hook(loggerNameHook), globalConf),
+		MLService: services.NewMLService(ctx, logger.Hook(loggerNameHook), globalConf),
 		config:    bc,
 	}
-
-	err := bs.init()
-	if err != nil {
+	if err := bs.Init(); err != nil {
 		return nil, err
 	}
-
 	return bs, nil
 }
 
 // Init initializes the browser server by creating a new context.
 func (bs *BrowserServer) Init() error {
-	//loggerNameHook := zerolog.HookFunc(func(e *zerolog.Event, level zerolog.Level, msg string) {
-	//	e.Str("Service", string(bs.Name()))
-	//})
-
-	//bs.logger = bs.logger.Hook(loggerNameHook)
-	err := bs.initBrowser(bs.config.BrowserDataPath)
-	if err != nil {
+	// 初始化浏览器
+	if err := bs.initBrowser(bs.config.BrowserDataPath); err != nil {
 		return fmt.Errorf("failed to initialize browser: %v", err)
 	}
-	err = utils.CreateDirectory(bs.config.DataPath)
-	if err != nil {
+
+	// 创建数据目录
+	if err := utils.CreateDirectory(bs.config.DataPath); err != nil {
 		return fmt.Errorf("failed to create data directory: %v", err)
 	}
 
-	// Create a new context for the browser
+	// 创建浏览器上下文
 	opts := append(
 		chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.UserAgent(bs.config.UserAgent),
@@ -118,15 +121,21 @@ func (bs *BrowserServer) Init() error {
 		chromedp.WithDebugf(bs.Logger.Debug().Msgf),
 	)
 
-	pe := PromptEntry{
+	// 添加浏览器prompt
+	pe := services.PromptEntry{
 		PromptVar: mcp.Prompt{
 			Name:        "browser_prompt",
-			Description: fmt.Sprintf("Get the relevant functions and prompts of the Browser MCP Server."),
+			Description: "Get the relevant functions and prompts of the Browser MCP Server.",
 			//Arguments:   make([]mcp.PromptArgument, 0),
 		},
 		HandlerFunc: bs.handlePrompt,
 	}
+
+	// 添加 mcp 工具
+	// prompt
 	bs.AddPrompt(pe)
+
+	// 导航
 	bs.AddTool(mcp.NewTool(
 		"browser_navigate",
 		mcp.WithDescription("Navigate to a URL"),
@@ -135,6 +144,8 @@ func (bs *BrowserServer) Init() error {
 			mcp.Required(),
 		),
 	), bs.handleNavigate)
+
+	// 截图
 	bs.AddTool(mcp.NewTool(
 		"browser_screenshot",
 		mcp.WithDescription("Take a screenshot of the current page or a specific element"),
@@ -152,6 +163,8 @@ func (bs *BrowserServer) Init() error {
 			mcp.Description("Height in pixels (default: 1100)"),
 		),
 	), bs.handleScreenshot)
+
+	// 点击
 	bs.AddTool(mcp.NewTool(
 		"browser_click",
 		mcp.WithDescription("Click an element on the page"),
@@ -160,6 +173,8 @@ func (bs *BrowserServer) Init() error {
 			mcp.Required(),
 		),
 	), bs.handleClick)
+
+	// 填写
 	bs.AddTool(mcp.NewTool(
 		"browser_fill",
 		mcp.WithDescription("Fill out an input field"),
@@ -172,6 +187,8 @@ func (bs *BrowserServer) Init() error {
 			mcp.Required(),
 		),
 	), bs.handleFill)
+
+	// 选择
 	bs.AddTool(mcp.NewTool(
 		"browser_select",
 		mcp.WithDescription("Select an element on the page with Select tag"),
@@ -184,6 +201,8 @@ func (bs *BrowserServer) Init() error {
 			mcp.Required(),
 		),
 	), bs.handleSelect)
+
+	// 悬停
 	bs.AddTool(mcp.NewTool(
 		"browser_hover",
 		mcp.WithDescription("Hover an element on the page"),
@@ -192,6 +211,8 @@ func (bs *BrowserServer) Init() error {
 			mcp.Required(),
 		),
 	), bs.handleHover)
+
+	// 执行
 	bs.AddTool(mcp.NewTool(
 		"browser_evaluate",
 		mcp.WithDescription("Execute JavaScript in the browser console"),
@@ -201,6 +222,7 @@ func (bs *BrowserServer) Init() error {
 		),
 	), bs.handleEvaluate)
 
+	// 调试
 	bs.AddTool(mcp.NewTool(
 		"browser_debug_enable",
 		mcp.WithDescription("Enable JavaScript debugging"),
@@ -210,6 +232,7 @@ func (bs *BrowserServer) Init() error {
 		),
 	), bs.handleDebugEnable)
 
+	// 设置断点
 	bs.AddTool(mcp.NewTool(
 		"browser_set_breakpoint",
 		mcp.WithDescription("Set a JavaScript breakpoint"),
@@ -229,6 +252,7 @@ func (bs *BrowserServer) Init() error {
 		),
 	), bs.handleSetBreakpoint)
 
+	// 移除断点
 	bs.AddTool(mcp.NewTool(
 		"browser_remove_breakpoint",
 		mcp.WithDescription("Remove a JavaScript breakpoint"),
@@ -238,16 +262,19 @@ func (bs *BrowserServer) Init() error {
 		),
 	), bs.handleRemoveBreakpoint)
 
+	// 暂停
 	bs.AddTool(mcp.NewTool(
 		"browser_pause",
 		mcp.WithDescription("Pause JavaScript execution"),
 	), bs.handlePause)
 
+	// 恢复
 	bs.AddTool(mcp.NewTool(
 		"browser_resume",
 		mcp.WithDescription("Resume JavaScript execution"),
 	), bs.handleResume)
 
+	// 获取调用栈
 	bs.AddTool(mcp.NewTool(
 		"browser_get_callstack",
 		mcp.WithDescription("Get current call stack when paused"),
@@ -255,7 +282,7 @@ func (bs *BrowserServer) Init() error {
 	return nil
 }
 
-// init initializes the browser server by creating the user data directory.
+// initBrowser 初始化浏览器
 func (bs *BrowserServer) initBrowser(userDataDir string) error {
 	_, err := os.Stat(userDataDir)
 	if err != nil && !os.IsNotExist(err) {
@@ -284,6 +311,7 @@ func (bs *BrowserServer) initBrowser(userDataDir string) error {
 	return nil
 }
 
+// handlePrompt 处理浏览器prompt
 func (bs *BrowserServer) handlePrompt(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 	// 处理浏览器提示
 	return &mcp.GetPromptResult{
@@ -1057,8 +1085,4 @@ func (bs *BrowserServer) LoadConfig(jsonData map[string]interface{}) error {
 		return err
 	}
 	return bs.config.Check()
-}
-
-func init() {
-	RegisterServ(BrowserServerName, NewBrowserServer)
 }
