@@ -20,6 +20,8 @@ import (
 	"github.com/gojue/moling/pkg/comm"
 	"github.com/gojue/moling/pkg/services/abstract"
 	"github.com/gojue/moling/pkg/services/browser"
+	"github.com/gojue/moling/pkg/services/command"
+	"github.com/gojue/moling/pkg/services/filesystem"
 )
 
 var serviceLists = make(map[comm.MoLingServerType]abstract.ServiceFactory)
@@ -36,5 +38,10 @@ func ServiceList() map[comm.MoLingServerType]abstract.ServiceFactory {
 }
 
 func init() {
+	// 浏览器操作工具
 	RegisterServ(browser.BrowserServerName, browser.NewBrowserServer)
+	// 命令行操作工具
+	RegisterServ(command.CommandServerName, command.NewCommandServer)
+	// 文件系统操作工具
+	RegisterServ(filesystem.FilesystemServerName, filesystem.NewFilesystemServer)
 }

@@ -15,7 +15,7 @@
 // Repository: https://github.com/gojue/moling
 
 // Package services Description: This file contains the implementation of the CommandServer interface for macOS and  Linux.
-package services
+package command
 
 import (
 	"context"
@@ -207,8 +207,4 @@ func (cs *CommandServer) LoadConfig(jsonData map[string]interface{}) error {
 	// split the AllowedCommand string into a slice
 	cs.config.allowedCommands = strings.Split(cs.config.AllowedCommand, ",")
 	return cs.config.Check()
-}
-
-func init() {
-	RegisterServ(CommandServerName, NewCommandServer)
 }

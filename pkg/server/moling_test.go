@@ -27,8 +27,8 @@ import (
 
 	"github.com/gojue/moling/pkg/comm"
 	"github.com/gojue/moling/pkg/config"
-	"github.com/gojue/moling/pkg/services"
 	"github.com/gojue/moling/pkg/services/abstract"
+	"github.com/gojue/moling/pkg/services/filesystem"
 	"github.com/gojue/moling/pkg/utils"
 )
 
@@ -62,7 +62,7 @@ func TestNewMLServer(t *testing.T) {
 	mlConfig.SetLogger(logger)
 
 	// Create a new server with the filesystem service
-	fs, err := services.NewFilesystemServer(ctx)
+	fs, err := filesystem.NewFilesystemServer(ctx)
 	if err != nil {
 		t.Errorf("Failed to create filesystem server: %v", err)
 	}

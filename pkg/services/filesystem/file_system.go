@@ -16,7 +16,7 @@
 // Source: https://github.com/mark3labs/mcp-filesystem-server
 
 // Package services provides the implementation of the FileSystemServer, which allows access to files and directories on the local file system.
-package services
+package filesystem
 
 import (
 	"context"
@@ -1032,8 +1032,4 @@ func (fs *FilesystemServer) LoadConfig(jsonData map[string]interface{}) error {
 	}
 	fs.config.allowedDirs = strings.Split(fs.config.AllowedDir, ",")
 	return fs.config.Check()
-}
-
-func init() {
-	RegisterServ(FilesystemServerName, NewFilesystemServer)
 }
