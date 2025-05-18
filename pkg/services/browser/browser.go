@@ -77,7 +77,7 @@ func NewBrowserServer(ctx context.Context) (services.Service, error) {
 		MLService: services.NewMLService(ctx, logger.Hook(loggerNameHook), globalConf),
 		config:    bc,
 	}
-	if err := bs.Init(); err != nil {
+	if err := bs.InitResources(); err != nil {
 		return nil, err
 	}
 	return bs, nil
