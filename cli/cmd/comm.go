@@ -8,7 +8,10 @@ import (
 	"time"
 
 	"context"
-	"github.com/gojue/moling/services"
+
+	"github.com/gojue/moling/pkg/comm"
+	"github.com/gojue/moling/pkg/config"
+	"github.com/gojue/moling/pkg/services"
 	"github.com/gojue/moling/utils"
 	"github.com/rs/zerolog"
 )
@@ -56,7 +59,7 @@ const (
 
 var (
 	GitVersion = "unknown_arm64_v0.0.0_2025-03-22 20:08"
-	mlConfig   = &services.MoLingConfig{
+	mlConfig   = &config.MoLingConfig{
 		Version:    GitVersion,
 		ConfigFile: filepath.Join("config", MLConfigName),
 		BasePath:   filepath.Join(os.TempDir(), MLRootPath), // will set in mlsCommandPreFunc
@@ -103,12 +106,12 @@ func setupLogger(basePath string) zerolog.Logger {
 
 // createContext 创建包含全局配置和日志的上下文
 func createContext(logger zerolog.Logger) context.Context {
-	ctx := context.WithValue(context.Background(), services.MoLingConfigKey, mlConfig)
-	return context.WithValue(ctx, services.MoLingLoggerKey, logger)
+	ctx := context.WithValue(context.Background(), comm.MoLingConfigKey, mlConfig)
+	return context.WithValue(ctx, comm.MoLingLoggerKey, logger)
 }
 
 // initSingleService 初始化单个服务
-func initSingleService(ctx context.Context, serviceType services.MoLingServerType, serviceFactory services.ServiceFactory, configJson map[string]interface{}) (services.Service, error) {
+func initSingleService(ctx context.Context, serviceType comm.MoLingServerType, serviceFactory services.ServiceFactory, configJson map[string]interface{}) (services.Service, error) {
 	// 创建服务实例
 	service, err := serviceFactory(ctx)
 	if err != nil {
@@ -132,7 +135,6 @@ func initSingleService(ctx context.Context, serviceType services.MoLingServerTyp
 	if err := service.Init(); err != nil {
 		return nil, fmt.Errorf("failed to initialize service %s: %v", service.Name(), err)
 	}
-
 	return service, nil
 }
 
@@ -162,6 +164,5 @@ func initServices(ctx context.Context, configJson map[string]interface{}, logger
 		servicesList = append(servicesList, service)
 		closers[string(service.Name())] = service.Close
 	}
-
 	return servicesList, closers, nil
 }

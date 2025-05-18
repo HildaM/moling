@@ -35,7 +35,7 @@ func (bs *BrowserServer) handleDebugEnable(ctx context.Context, request mcp.Call
 	}
 
 	var err error
-	rctx, cancel := context.WithCancel(bs.ctx)
+	rctx, cancel := context.WithCancel(bs.Ctx())
 	defer cancel()
 
 	if enabled {
@@ -78,7 +78,7 @@ func (bs *BrowserServer) handleSetBreakpoint(ctx context.Context, request mcp.Ca
 	condition, _ := request.Params.Arguments["condition"].(string)
 
 	var breakpointID string
-	rctx, cancel := context.WithCancel(bs.ctx)
+	rctx, cancel := context.WithCancel(bs.Ctx())
 	defer cancel()
 	err := chromedp.Run(rctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		t := chromedp.FromContext(ctx).Target
@@ -115,7 +115,7 @@ func (bs *BrowserServer) handleRemoveBreakpoint(ctx context.Context, request mcp
 	if !ok {
 		return mcp.NewToolResultError("breakpointId must be a string"), nil
 	}
-	rctx, cancel := context.WithCancel(bs.ctx)
+	rctx, cancel := context.WithCancel(bs.Ctx())
 	defer cancel()
 	err := chromedp.Run(rctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		t := chromedp.FromContext(ctx).Target
@@ -133,7 +133,7 @@ func (bs *BrowserServer) handleRemoveBreakpoint(ctx context.Context, request mcp
 
 // handlePause handles pausing the JavaScript execution in the browser.
 func (bs *BrowserServer) handlePause(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	rctx, cancel := context.WithCancel(bs.ctx)
+	rctx, cancel := context.WithCancel(bs.Ctx())
 	defer cancel()
 	err := chromedp.Run(rctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		t := chromedp.FromContext(ctx).Target
@@ -149,7 +149,7 @@ func (bs *BrowserServer) handlePause(ctx context.Context, request mcp.CallToolRe
 
 // handleResume handles resuming the JavaScript execution in the browser.
 func (bs *BrowserServer) handleResume(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	rctx, cancel := context.WithCancel(bs.ctx)
+	rctx, cancel := context.WithCancel(bs.Ctx())
 	defer cancel()
 	err := chromedp.Run(rctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		t := chromedp.FromContext(ctx).Target
@@ -166,7 +166,7 @@ func (bs *BrowserServer) handleResume(ctx context.Context, request mcp.CallToolR
 // handleStepOver handles stepping over the next line of JavaScript code in the browser.
 func (bs *BrowserServer) handleGetCallstack(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var callstack interface{}
-	rctx, cancel := context.WithCancel(bs.ctx)
+	rctx, cancel := context.WithCancel(bs.Ctx())
 	defer cancel()
 	err := chromedp.Run(rctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		t := chromedp.FromContext(ctx).Target

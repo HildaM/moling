@@ -23,12 +23,16 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/rs/zerolog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/gojue/moling/pkg/comm"
+	"github.com/gojue/moling/pkg/config"
+	"github.com/gojue/moling/utils"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/rs/zerolog"
 )
 
 const (
@@ -38,7 +42,7 @@ const (
 	MaxBase64Size = 1024 * 1024 * 1
 )
 const (
-	FilesystemServerName MoLingServerType = "FileSystem"
+	FilesystemServerName comm.MoLingServerType = "FileSystem"
 )
 
 type FileInfo struct {
@@ -59,12 +63,12 @@ type FilesystemServer struct {
 func NewFilesystemServer(ctx context.Context) (Service, error) {
 	// Validate the config
 	var err error
-	globalConf := ctx.Value(MoLingConfigKey).(*MoLingConfig)
+	globalConf := ctx.Value(comm.MoLingConfigKey).(*config.MoLingConfig)
 	userDataDir := filepath.Join(globalConf.BasePath, "data")
 
 	fc := NewFileSystemConfig(userDataDir)
 
-	lger, ok := ctx.Value(MoLingLoggerKey).(zerolog.Logger)
+	lger, ok := ctx.Value(comm.MoLingLoggerKey).(zerolog.Logger)
 	if !ok {
 		return nil, fmt.Errorf("FilesystemServer: invalid logger type")
 	}
@@ -78,7 +82,7 @@ func NewFilesystemServer(ctx context.Context) (Service, error) {
 		config:    fc,
 	}
 
-	err = fs.init()
+	err = fs.Init()
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize filesystem server: %v", err)
 	}
@@ -93,11 +97,11 @@ func (fs *FilesystemServer) Init() error {
 	), fs.handleReadResource)
 
 	pe := PromptEntry{
-		prompt: mcp.Prompt{
+		PromptVar: mcp.Prompt{
 			Name:        "filesystem_prompt",
 			Description: fmt.Sprintf("Get the relevant functions and prompts of the FileSystem MCP Server."),
 		},
-		phf: fs.handlePrompt,
+		HandlerFunc: fs.handlePrompt,
 	}
 	fs.AddPrompt(pe)
 
@@ -332,7 +336,7 @@ func (fs *FilesystemServer) searchFiles(rootPath, pattern string) ([]string, err
 // Resource handler
 func (fs *FilesystemServer) handleReadResource(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 	uri := request.Params.URI
-	fs.logger.Debug().Str("uri", uri).Msg("handleReadResource")
+	fs.Logger.Debug().Str("uri", uri).Msg("handleReadResource")
 
 	// Check if it'fss a file:// URI
 	if !strings.HasPrefix(uri, "file://") {
@@ -366,7 +370,7 @@ func (fs *FilesystemServer) handleReadResource(ctx context.Context, request mcp.
 
 		for _, entry := range entries {
 			entryPath := filepath.Join(validPath, entry.Name())
-			entryURI := pathToResourceURI(entryPath)
+			entryURI := utils.PathToResourceURI(entryPath)
 
 			if entry.IsDir() {
 				result.WriteString(fmt.Sprintf("[DIR]  %s (%s)\n", entry.Name(), entryURI))
@@ -391,7 +395,7 @@ func (fs *FilesystemServer) handleReadResource(ctx context.Context, request mcp.
 	}
 
 	// It'fss a file, determine how to handle it
-	mimeType := detectMimeType(validPath)
+	mimeType := utils.DetectMimeType(validPath)
 
 	// Check file size
 	if fileInfo.Size() > MaxInlineSize {
@@ -412,7 +416,7 @@ func (fs *FilesystemServer) handleReadResource(ctx context.Context, request mcp.
 	}
 
 	// Handle based on content type
-	if isTextFile(mimeType) {
+	if utils.IsTextFile(mimeType) {
 		// It'fss a text file, return as text
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
@@ -468,7 +472,7 @@ func (fs *FilesystemServer) handleReadFile(ctx context.Context, request mcp.Call
 
 	if info.IsDir() {
 		// For directories, return a resource reference instead
-		resourceURI := pathToResourceURI(validPath)
+		resourceURI := utils.PathToResourceURI(validPath)
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
 				mcp.TextContent{
@@ -488,12 +492,12 @@ func (fs *FilesystemServer) handleReadFile(ctx context.Context, request mcp.Call
 	}
 
 	// Determine MIME type
-	mimeType := detectMimeType(validPath)
+	mimeType := utils.DetectMimeType(validPath)
 
 	// Check file size
 	if info.Size() > MaxInlineSize {
 		// File is too large to inline, return a resource reference
-		resourceURI := pathToResourceURI(validPath)
+		resourceURI := utils.PathToResourceURI(validPath)
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
 				mcp.TextContent{
@@ -519,10 +523,10 @@ func (fs *FilesystemServer) handleReadFile(ctx context.Context, request mcp.Call
 	}
 
 	// Handle based on content type
-	if isTextFile(mimeType) {
+	if utils.IsTextFile(mimeType) {
 		// It'fss a text file, return as text
 		return mcp.NewToolResultText(string(content)), nil
-	} else if isImageFile(mimeType) {
+	} else if utils.IsImageFile(mimeType) {
 		// It'fss an image file, return as image content
 		if info.Size() <= MaxBase64Size {
 			return &mcp.CallToolResult{
@@ -540,7 +544,7 @@ func (fs *FilesystemServer) handleReadFile(ctx context.Context, request mcp.Call
 			}, nil
 		} else {
 			// Too large for base64, return a reference
-			resourceURI := pathToResourceURI(validPath)
+			resourceURI := utils.PathToResourceURI(validPath)
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
 					mcp.TextContent{
@@ -560,7 +564,7 @@ func (fs *FilesystemServer) handleReadFile(ctx context.Context, request mcp.Call
 		}
 	} else {
 		// It'fss another type of binary file
-		resourceURI := pathToResourceURI(validPath)
+		resourceURI := utils.PathToResourceURI(validPath)
 
 		if info.Size() <= MaxBase64Size {
 			// Small enough for base64 encoding
@@ -649,7 +653,7 @@ func (fs *FilesystemServer) handleWriteFile(ctx context.Context, request mcp.Cal
 		return mcp.NewToolResultText(fmt.Sprintf("Successfully wrote to %s", path)), nil
 	}
 
-	resourceURI := pathToResourceURI(validPath)
+	resourceURI := utils.PathToResourceURI(validPath)
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
@@ -699,7 +703,7 @@ func (fs *FilesystemServer) handleListDirectory(ctx context.Context, request mcp
 
 	for _, entry := range entries {
 		entryPath := filepath.Join(validPath, entry.Name())
-		resourceURI := pathToResourceURI(entryPath)
+		resourceURI := utils.PathToResourceURI(entryPath)
 
 		if entry.IsDir() {
 			result.WriteString(fmt.Sprintf("[DIR]  %s (%s)\n", entry.Name(), resourceURI))
@@ -715,7 +719,7 @@ func (fs *FilesystemServer) handleListDirectory(ctx context.Context, request mcp
 	}
 
 	// Return both text content and embedded resource
-	resourceURI := pathToResourceURI(validPath)
+	resourceURI := utils.PathToResourceURI(validPath)
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
@@ -748,7 +752,7 @@ func (fs *FilesystemServer) handleCreateDirectory(ctx context.Context, request m
 	// Check if path already exists
 	if info, err := os.Stat(validPath); err == nil {
 		if info.IsDir() {
-			resourceURI := pathToResourceURI(validPath)
+			resourceURI := utils.PathToResourceURI(validPath)
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
 					mcp.TextContent{
@@ -773,7 +777,7 @@ func (fs *FilesystemServer) handleCreateDirectory(ctx context.Context, request m
 		return mcp.NewToolResultError(fmt.Sprintf("Error creating directory: %v", err)), nil
 	}
 
-	resourceURI := pathToResourceURI(validPath)
+	resourceURI := utils.PathToResourceURI(validPath)
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
@@ -827,7 +831,7 @@ func (fs *FilesystemServer) handleMoveFile(ctx context.Context, request mcp.Call
 		return mcp.NewToolResultError(fmt.Sprintf("Error moving file: %v", err)), nil
 	}
 
-	resourceURI := pathToResourceURI(validDest)
+	resourceURI := utils.PathToResourceURI(validDest)
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
@@ -889,7 +893,7 @@ func (fs *FilesystemServer) handleSearchFiles(ctx context.Context, request mcp.C
 	formattedResults.WriteString(fmt.Sprintf("Found %d results:\n\n", len(results)))
 
 	for _, result := range results {
-		resourceURI := pathToResourceURI(result)
+		resourceURI := utils.PathToResourceURI(result)
 		info, err := os.Stat(result)
 		if err == nil {
 			if info.IsDir() {
@@ -933,10 +937,10 @@ func (fs *FilesystemServer) handleGetFileInfo(ctx context.Context, request mcp.C
 	// Get MIME type for files
 	mimeType := "directory"
 	if info.IsFile {
-		mimeType = detectMimeType(validPath)
+		mimeType = utils.DetectMimeType(validPath)
 	}
 
-	resourceURI := pathToResourceURI(validPath)
+	resourceURI := utils.PathToResourceURI(validPath)
 
 	// Determine file type text
 	var fileTypeText string
@@ -991,7 +995,7 @@ func (fs *FilesystemServer) handleListAllowedDirectories(ctx context.Context, re
 	result.WriteString("Allowed directories:")
 
 	for _, dir := range displayDirs {
-		resourceURI := pathToResourceURI(dir)
+		resourceURI := utils.PathToResourceURI(dir)
 		result.WriteString(fmt.Sprintf("%s (%s)\n", dir, resourceURI))
 	}
 
@@ -1003,25 +1007,25 @@ func (fs *FilesystemServer) Config() string {
 	fs.config.AllowedDir = strings.Join(fs.config.allowedDirs, ",")
 	cfg, err := json.Marshal(fs.config)
 	if err != nil {
-		fs.logger.Err(err).Msg("failed to marshal config")
+		fs.Logger.Err(err).Msg("failed to marshal config")
 		return "{}"
 	}
 	return string(cfg)
 }
 
-func (fs *FilesystemServer) Name() MoLingServerType {
+func (fs *FilesystemServer) Name() comm.MoLingServerType {
 	return FilesystemServerName
 }
 
 func (fs *FilesystemServer) Close() error {
 	// Cancel the context to stop the browser
-	fs.logger.Debug().Msg("closing FilesystemServer")
+	fs.Logger.Debug().Msg("closing FilesystemServer")
 	return nil
 }
 
 // LoadConfig loads the configuration from a JSON object.
 func (fs *FilesystemServer) LoadConfig(jsonData map[string]interface{}) error {
-	err := mergeJSONToStruct(fs.config, jsonData)
+	err := utils.MergeJSONToStruct(fs.config, jsonData)
 	if err != nil {
 		return err
 	}

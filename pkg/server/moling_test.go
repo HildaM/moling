@@ -18,18 +18,22 @@
  *
  */
 
-package services
+package server
 
 import (
-	"github.com/gojue/moling/utils"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/gojue/moling/pkg/comm"
+	"github.com/gojue/moling/pkg/config"
+	"github.com/gojue/moling/pkg/services"
+	"github.com/gojue/moling/utils"
 )
 
 func TestNewMLServer(t *testing.T) {
 	// Create a new MoLingConfig
-	mlConfig := MoLingConfig{
+	mlConfig := config.MoLingConfig{
 		BasePath: filepath.Join(os.TempDir(), "moling_test"),
 	}
 	mlDirectories := []string{
@@ -49,7 +53,7 @@ func TestNewMLServer(t *testing.T) {
 			t.Errorf("Failed to create directory %s: %v", dirName, err)
 		}
 	}
-	logger, ctx, err := initTestEnv()
+	logger, ctx, err := comm.InitTestEnv()
 	if err != nil {
 		t.Fatalf("Failed to initialize test environment: %v", err)
 	}
@@ -57,7 +61,7 @@ func TestNewMLServer(t *testing.T) {
 	mlConfig.SetLogger(logger)
 
 	// Create a new server with the filesystem service
-	fs, err := NewFilesystemServer(ctx)
+	fs, err := services.NewFilesystemServer(ctx)
 	if err != nil {
 		t.Errorf("Failed to create filesystem server: %v", err)
 	}
@@ -65,7 +69,7 @@ func TestNewMLServer(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to initialize filesystem server: %v", err)
 	}
-	srvs := []Service{
+	srvs := []services.Service{
 		fs,
 	}
 	srv, err := NewMoLingServer(ctx, srvs, mlConfig)

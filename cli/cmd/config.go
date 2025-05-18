@@ -21,10 +21,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/gojue/moling/services"
-	"github.com/spf13/cobra"
 	"os"
 	"path/filepath"
+
+	"github.com/gojue/moling/pkg/services"
+	"github.com/spf13/cobra"
 )
 
 func init() {
@@ -81,7 +82,6 @@ func ConfigCommandFunc(command *cobra.Command, args []string) error {
 	logger.Info().Str("config", configFilePath).Msg("Current loaded configuration file path")
 	logger.Info().Msg("You can modify the configuration file to change the settings.")
 	logger.Info().Msgf("Configuration details: \n%s", formattedJson)
-
 	return nil
 }
 
@@ -125,7 +125,7 @@ func buildConfigData(ctx context.Context, existingConfig map[string]interface{})
 func addGlobalConfig(bf *bytes.Buffer) error {
 	mlConfigJson, err := json.Marshal(mlConfig)
 	if err != nil {
-		return fmt.Errorf("Error marshaling GlobalConfig: %v", err)
+		return fmt.Errorf("error marshaling GlobalConfig: %v", err)
 	}
 	bf.WriteString("\t\"MoLingConfig\":\n")
 	bf.WriteString(fmt.Sprintf("\t%s,\n", mlConfigJson))
@@ -157,12 +157,12 @@ func addServiceConfigs(ctx context.Context, bf *bytes.Buffer, existingConfig map
 func formatConfigJson(configData string) ([]byte, error) {
 	var jsonObj interface{}
 	if err := json.Unmarshal([]byte(configData), &jsonObj); err != nil {
-		return nil, fmt.Errorf("Error unmarshaling JSON: %v, payload:%s", err, configData)
+		return nil, fmt.Errorf("error unmarshaling JSON: %+v, payload: %s", err, configData)
 	}
 
 	formattedJson, err := json.MarshalIndent(jsonObj, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("Error marshaling JSON: %v", err)
+		return nil, fmt.Errorf("error marshaling JSON: %+v", err)
 	}
 	return formattedJson, nil
 }
@@ -173,7 +173,7 @@ func formatConfigJson(configData string) ([]byte, error) {
 func saveConfigIfNeeded(formattedJson []byte, configFilePath string, hasConfig bool) error {
 	if !hasConfig {
 		if err := os.WriteFile(configFilePath, formattedJson, 0644); err != nil {
-			return fmt.Errorf("Error writing configuration file: %v", err)
+			return fmt.Errorf("error writing configuration file: %v", err)
 		}
 	}
 	return nil

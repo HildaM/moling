@@ -18,12 +18,14 @@
  *
  */
 
-package services
+package config
 
 import (
 	"encoding/json"
 	"os"
 	"testing"
+
+	"github.com/gojue/moling/utils"
 )
 
 // TestConfigLoad tests the loading of the configuration from a JSON file.
@@ -51,7 +53,7 @@ func TestConfigLoad(t *testing.T) {
 	if !ok {
 		t.Fatalf("failed to parse MoLingConfig from JSON")
 	}
-	if err := mergeJSONToStruct(cfg, mlConfig); err != nil {
+	if err := utils.MergeJSONToStruct(cfg, mlConfig); err != nil {
 		t.Fatalf("failed to merge JSON to struct: %v", err)
 	}
 	t.Logf("Config loaded, MoLing Config.BasePath: %s", cfg.BasePath)

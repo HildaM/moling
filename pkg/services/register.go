@@ -16,15 +16,19 @@
 
 package services
 
-var serviceLists = make(map[MoLingServerType]ServiceFactory)
+import (
+	"github.com/gojue/moling/pkg/comm"
+)
+
+var serviceLists = make(map[comm.MoLingServerType]ServiceFactory)
 
 // RegisterServ register service
-func RegisterServ(n MoLingServerType, f ServiceFactory) {
+func RegisterServ(n comm.MoLingServerType, f ServiceFactory) {
 	//serviceLists = append(, f)
 	serviceLists[n] = f
 }
 
 // ServiceList  get service lists
-func ServiceList() map[MoLingServerType]ServiceFactory {
+func ServiceList() map[comm.MoLingServerType]ServiceFactory {
 	return serviceLists
 }

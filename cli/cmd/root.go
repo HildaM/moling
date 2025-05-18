@@ -20,11 +20,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/gojue/moling/cli/cobrautl"
-	"github.com/gojue/moling/services"
-	"github.com/gojue/moling/utils"
-	"github.com/rs/zerolog"
-	"github.com/spf13/cobra"
 	"os"
 	"os/signal"
 	"os/user"
@@ -32,6 +27,13 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/gojue/moling/cli/cobrautl"
+	"github.com/gojue/moling/pkg/server"
+	"github.com/gojue/moling/pkg/services"
+	"github.com/gojue/moling/utils"
+	"github.com/rs/zerolog"
+	"github.com/spf13/cobra"
 )
 
 func init() {
@@ -155,8 +157,8 @@ func loadConfigFile(configFilePath string, logger zerolog.Logger) (map[string]in
 }
 
 // startMoLingServer 启动MoLing服务器
-func startMoLingServer(ctx context.Context, servicesList []services.Service, logger zerolog.Logger) (*services.MoLingServer, error) {
-	server, err := services.NewMoLingServer(ctx, servicesList, *mlConfig)
+func startMoLingServer(ctx context.Context, servicesList []services.Service, logger zerolog.Logger) (*server.MoLingServer, error) {
+	server, err := server.NewMoLingServer(ctx, servicesList, *mlConfig)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to create server")
 		return nil, err
@@ -167,7 +169,6 @@ func startMoLingServer(ctx context.Context, servicesList []services.Service, log
 			logger.Error().Err(err).Msg("failed to start server")
 		}
 	}()
-
 	return server, nil
 }
 

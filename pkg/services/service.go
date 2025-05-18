@@ -19,18 +19,14 @@ package services
 import (
 	"context"
 	"errors"
+	"sync"
+
+	"github.com/gojue/moling/pkg/comm"
+	"github.com/gojue/moling/pkg/config"
+	"github.com/gojue/moling/utils"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/rs/zerolog"
-	"sync"
-)
-
-type contextKey string
-
-// MoLingConfigKey is a context key for storing the version of MoLing
-const (
-	MoLingConfigKey contextKey = "moling_config"
-	MoLingLoggerKey contextKey = "moling_logger"
 )
 
 var (
@@ -62,65 +58,83 @@ type Service interface {
 	// Init initializes the service with the given context and configuration.
 	Init() error
 
-	MlConfig() *MoLingConfig
+	MlConfig() *config.MoLingConfig
 
 	// Name returns the name of the service.
-	Name() MoLingServerType
+	Name() comm.MoLingServerType
 
 	// Close closes the service and releases any resources it holds.
 	Close() error
 }
 
 type PromptEntry struct {
-	prompt mcp.Prompt
-	phf    server.PromptHandlerFunc
+	PromptVar   mcp.Prompt
+	HandlerFunc server.PromptHandlerFunc
 }
 
 func (pe *PromptEntry) Prompt() mcp.Prompt {
-	return pe.prompt
+	return pe.PromptVar
 }
 
 func (pe *PromptEntry) Handler() server.PromptHandlerFunc {
-	return pe.phf
-
+	return pe.HandlerFunc
 }
 
 // NewMLService creates a new MLService with the given context and logger.
-func NewMLService(ctx context.Context, logger zerolog.Logger, cfg *MoLingConfig) MLService {
-	return MLService{
-		ctx:      ctx,
-		logger:   logger,
-		mlConfig: cfg,
+func NewMLService(ctx context.Context, logger zerolog.Logger, cfg *config.MoLingConfig) MLService {
+	service := MLService{
+		Context:              ctx,
+		Logger:               logger,
+		mlConfig:             cfg,
+		lock:                 &sync.Mutex{},
+		resources:            make(map[mcp.Resource]server.ResourceHandlerFunc),
+		resourcesTemplates:   make(map[mcp.ResourceTemplate]server.ResourceTemplateHandlerFunc),
+		prompts:              make([]PromptEntry, 0),
+		notificationHandlers: make(map[string]server.NotificationHandlerFunc),
+		tools:                []server.ServerTool{},
 	}
+	return service
 }
 
 // MLService implements the Service interface and provides methods to manage resources, templates, prompts, tools, and notification handlers.
 type MLService struct {
-	ctx                  context.Context
+	Context              context.Context
 	lock                 *sync.Mutex
 	resources            map[mcp.Resource]server.ResourceHandlerFunc
 	resourcesTemplates   map[mcp.ResourceTemplate]server.ResourceTemplateHandlerFunc
 	prompts              []PromptEntry
 	tools                []server.ServerTool
 	notificationHandlers map[string]server.NotificationHandlerFunc
-	logger               zerolog.Logger // The logger for the service
-	mlConfig             *MoLingConfig  // The configuration for the service
+	Logger               zerolog.Logger       // The logger for the service
+	mlConfig             *config.MoLingConfig // The configuration for the service
 }
 
 // init initializes the MLService with empty maps and a mutex.
 func (mls *MLService) init() error {
-	mls.lock = &sync.Mutex{}
-	mls.resources = make(map[mcp.Resource]server.ResourceHandlerFunc)
-	mls.resourcesTemplates = make(map[mcp.ResourceTemplate]server.ResourceTemplateHandlerFunc)
-	mls.prompts = make([]PromptEntry, 0)
-	mls.notificationHandlers = make(map[string]server.NotificationHandlerFunc)
-	mls.tools = []server.ServerTool{}
+	if mls.lock == nil {
+		mls.lock = &sync.Mutex{}
+	}
+	if mls.resources == nil {
+		mls.resources = make(map[mcp.Resource]server.ResourceHandlerFunc)
+	}
+	if mls.resourcesTemplates == nil {
+		mls.resourcesTemplates = make(map[mcp.ResourceTemplate]server.ResourceTemplateHandlerFunc)
+	}
+	if mls.prompts == nil {
+		mls.prompts = make([]PromptEntry, 0)
+	}
+	if mls.notificationHandlers == nil {
+		mls.notificationHandlers = make(map[string]server.NotificationHandlerFunc)
+	}
+	if mls.tools == nil {
+		mls.tools = []server.ServerTool{}
+	}
 	return nil
 }
 
 // Ctx returns the context of the MLService.
 func (mls *MLService) Ctx() context.Context {
-	return mls.ctx
+	return mls.Context
 }
 
 // AddResource adds a resource and its handler function to the service.
@@ -194,26 +208,26 @@ func (mls *MLService) NotificationHandlers() map[string]server.NotificationHandl
 }
 
 // MlConfig returns the configuration of the MoLing service.
-func (mls *MLService) MlConfig() *MoLingConfig {
+func (mls *MLService) MlConfig() *config.MoLingConfig {
 	return mls.mlConfig
 }
 
 // Config returns the configuration of the service as a string.
 func (mls *MLService) Config() string {
-	panic("not implemented yet") // TODO: Implement
+	return mls.mlConfig.String()
 }
 
 // Name returns the name of the service.
-func (mls *MLService) Name() string {
-	panic("not implemented yet") // TODO: Implement
+func (mls *MLService) Name() comm.MoLingServerType {
+	return "MLService"
 }
 
 // LoadConfig loads the configuration for the service from a map.
 func (mls *MLService) LoadConfig(jsonData map[string]interface{}) error {
 	//panic("not implemented yet") // TODO: Implement
-	err := mergeJSONToStruct(mls.mlConfig, jsonData)
+	err := utils.MergeJSONToStruct(mls.MlConfig(), jsonData)
 	if err != nil {
 		return err
 	}
-	return mls.mlConfig.Check()
+	return mls.MlConfig().Check()
 }

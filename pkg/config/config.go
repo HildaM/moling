@@ -14,12 +14,12 @@
 //
 // Repository: https://github.com/gojue/moling
 
-package services
+package config
 
 import (
 	"fmt"
+
 	"github.com/rs/zerolog"
-	"reflect"
 )
 
 // Config is an interface that defines a method for checking configuration validity.
@@ -62,34 +62,6 @@ func (cfg *MoLingConfig) SetLogger(logger zerolog.Logger) {
 	cfg.logger = logger
 }
 
-// mergeJSONToStruct 将JSON中的字段合并到结构体中
-
-func mergeJSONToStruct(target interface{}, jsonMap map[string]interface{}) error {
-	// 获取目标结构体的反射值
-	val := reflect.ValueOf(target).Elem()
-	typ := val.Type()
-
-	// 遍历JSON map中的每个字段
-	for jsonKey, jsonValue := range jsonMap {
-		// 遍历结构体的每个字段
-		for i := 0; i < typ.NumField(); i++ {
-			field := typ.Field(i)
-			// 检查JSON字段名是否与结构体的JSON tag匹配
-			if field.Tag.Get("json") == jsonKey {
-				// 获取结构体字段的反射值
-				fieldVal := val.Field(i)
-				// 检查字段是否可设置
-				if fieldVal.CanSet() {
-					// 将JSON值转换为结构体字段的类型
-					jsonVal := reflect.ValueOf(jsonValue)
-					if jsonVal.Type().ConvertibleTo(fieldVal.Type()) {
-						fieldVal.Set(jsonVal.Convert(fieldVal.Type()))
-					} else {
-						return fmt.Errorf("type mismatch for field %s, value:%v", jsonKey, jsonValue)
-					}
-				}
-			}
-		}
-	}
-	return nil
+func (cfg *MoLingConfig) String() string {
+	return fmt.Sprintf("ConfigFile: %s, BasePath: %s, Version: %s, ListenAddr: %s, Debug: %t, Module: %s, Username: %s, HomeDir: %s, SystemInfo: %s", cfg.ConfigFile, cfg.BasePath, cfg.Version, cfg.ListenAddr, cfg.Debug, cfg.Module, cfg.Username, cfg.HomeDir, cfg.SystemInfo)
 }

@@ -18,8 +18,9 @@ package services
 
 import (
 	"context"
-	"github.com/mark3labs/mcp-go/mcp"
 	"testing"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func TestMLService_AddResource(t *testing.T) {
@@ -41,10 +42,10 @@ func TestMLService_AddResource(t *testing.T) {
 
 	service.AddResource(resource, handler)
 
-	if len(service.resources) != 1 {
-		t.Errorf("Expected 1 resource, got %d", len(service.resources))
+	if len(service.Resources()) != 1 {
+		t.Errorf("Expected 1 resource, got %d", len(service.Resources()))
 	}
-	if service.resources[resource] == nil {
+	if service.Resources()[resource] == nil {
 		t.Errorf("Handler for resource not found")
 	}
 }
@@ -68,10 +69,10 @@ func TestMLService_AddResourceTemplate(t *testing.T) {
 
 	service.AddResourceTemplate(template, handler)
 
-	if len(service.resourcesTemplates) != 1 {
-		t.Errorf("Expected 1 resource template, got %d", len(service.resourcesTemplates))
+	if len(service.ResourceTemplates()) != 1 {
+		t.Errorf("Expected 1 resource template, got %d", len(service.ResourceTemplates()))
 	}
-	if service.resourcesTemplates[template] == nil {
+	if service.ResourceTemplates()[template] == nil {
 		t.Errorf("Handler for resource template not found")
 	}
 }
@@ -98,17 +99,17 @@ func TestMLService_AddPrompt(t *testing.T) {
 		}, nil
 	}
 	pe := PromptEntry{
-		prompt: mcp.Prompt{Name: "testPrompt"},
-		phf:    handler,
+		PromptVar:   mcp.Prompt{Name: "testPrompt"},
+		HandlerFunc: handler,
 	}
 	service.AddPrompt(pe)
 
-	if len(service.prompts) != 1 {
-		t.Errorf("Expected 1 prompt, got %d", len(service.prompts))
+	if len(service.Prompts()) != 1 {
+		t.Errorf("Expected 1 prompt, got %d", len(service.Prompts()))
 	}
-	for _, p := range service.prompts {
-		if p.prompt.Name != prompt {
-			t.Errorf("Expected prompt name %s, got %s", prompt, p.prompt.Name)
+	for _, p := range service.Prompts() {
+		if p.Prompt().Name != prompt {
+			t.Errorf("Expected prompt name %s, got %s", prompt, p.Prompt().Name)
 		}
 	}
 }
@@ -133,12 +134,12 @@ func TestMLService_AddTool(t *testing.T) {
 
 	service.AddTool(tool, handler)
 
-	if len(service.tools) != 1 {
-		t.Errorf("Expected 1 tool, got %d", len(service.tools))
+	if len(service.Tools()) != 1 {
+		t.Errorf("Expected 1 tool, got %d", len(service.Tools()))
 	}
 
 	// After
-	if service.tools[0].Tool.Name != tool.Name {
+	if service.Tools()[0].Tool.Name != tool.Name {
 		t.Errorf("Tool not added correctly")
 	}
 }
@@ -156,10 +157,10 @@ func TestMLService_AddNotificationHandler(t *testing.T) {
 
 	service.AddNotificationHandler(name, handler)
 
-	if len(service.notificationHandlers) != 1 {
-		t.Errorf("Expected 1 notification handler, got %d", len(service.notificationHandlers))
+	if len(service.NotificationHandlers()) != 1 {
+		t.Errorf("Expected 1 notification handler, got %d", len(service.NotificationHandlers()))
 	}
-	if service.notificationHandlers[name] == nil {
+	if service.NotificationHandlers()[name] == nil {
 		t.Errorf("Handler for notification not found")
 	}
 }
