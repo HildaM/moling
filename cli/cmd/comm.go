@@ -12,7 +12,7 @@ import (
 	"github.com/gojue/moling/pkg/comm"
 	"github.com/gojue/moling/pkg/config"
 	"github.com/gojue/moling/pkg/services"
-	"github.com/gojue/moling/utils"
+	"github.com/gojue/moling/pkg/utils"
 	"github.com/rs/zerolog"
 )
 

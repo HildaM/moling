@@ -31,7 +31,7 @@ import (
 	"github.com/gojue/moling/cli/cobrautl"
 	"github.com/gojue/moling/pkg/server"
 	"github.com/gojue/moling/pkg/services"
-	"github.com/gojue/moling/utils"
+	"github.com/gojue/moling/pkg/utils"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 )

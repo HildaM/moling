@@ -17,9 +17,10 @@
 package cmd
 
 import (
-	"github.com/gojue/moling/utils"
-	"github.com/spf13/cobra"
 	"path/filepath"
+
+	"github.com/gojue/moling/pkg/utils"
+	"github.com/spf13/cobra"
 )
 
 // mlsCommandPreFunc is a pre-run function for the MoLing command.

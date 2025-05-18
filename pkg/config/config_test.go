@@ -25,7 +25,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/gojue/moling/utils"
+	"github.com/gojue/moling/pkg/utils"
 )
 
 // TestConfigLoad tests the loading of the configuration from a JSON file.
