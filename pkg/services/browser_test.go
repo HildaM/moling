@@ -14,7 +14,7 @@
 //
 // Repository: https://github.com/gojue/moling
 
-package browser
+package services
 
 import (
 	"testing"

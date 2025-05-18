@@ -15,7 +15,7 @@
 // Repository: https://github.com/gojue/moling
 
 // Package services provides a set of services for the MoLing application.
-package browser
+package services
 
 import (
 	"context"
@@ -31,24 +31,24 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/gojue/moling/pkg/comm"
 	"github.com/gojue/moling/pkg/config"
-	"github.com/gojue/moling/pkg/services"
 	"github.com/gojue/moling/pkg/utils"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog"
 )
 
-func init() {
-	services.RegisterServ(BrowserServerName, NewBrowserServer)
-}
-
 const (
+	// browser 工具
 	BrowserDataPath                         = "browser" // Path to store browser data
 	BrowserServerName comm.MoLingServerType = "Browser"
 )
 
+func init() {
+	RegisterServ(BrowserServerName, NewBrowserServer)
+}
+
 // BrowserServer represents the configuration for the browser service.
 type BrowserServer struct {
-	services.MLService
+	MLService
 	config       *BrowserConfig
 	name         string // The name of the service
 	cancelAlloc  context.CancelFunc
@@ -56,7 +56,7 @@ type BrowserServer struct {
 }
 
 // NewBrowserServer creates a new BrowserServer instance with the given context and configuration.
-func NewBrowserServer(ctx context.Context) (services.Service, error) {
+func NewBrowserServer(ctx context.Context) (Service, error) {
 	// 获取浏览器配置
 	bc := NewBrowserConfig()
 	globalConf := ctx.Value(comm.MoLingConfigKey).(*config.MoLingConfig)
@@ -74,7 +74,7 @@ func NewBrowserServer(ctx context.Context) (services.Service, error) {
 
 	// 创建浏览器服务实例
 	bs := &BrowserServer{
-		MLService: services.NewMLService(ctx, logger.Hook(loggerNameHook), globalConf),
+		MLService: NewMLService(ctx, logger.Hook(loggerNameHook), globalConf),
 		config:    bc,
 	}
 	if err := bs.InitResources(); err != nil {
@@ -122,7 +122,7 @@ func (bs *BrowserServer) Init() error {
 	)
 
 	// 添加浏览器prompt
-	pe := services.PromptEntry{
+	pe := PromptEntry{
 		PromptVar: mcp.Prompt{
 			Name:        "browser_prompt",
 			Description: "Get the relevant functions and prompts of the Browser MCP Server.",
