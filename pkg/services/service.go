@@ -18,7 +18,6 @@ package services
 
 import (
 	"context"
-	"errors"
 	"sync"
 
 	"github.com/gojue/moling/pkg/comm"
@@ -27,10 +26,6 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/rs/zerolog"
-)
-
-var (
-	ErrConfigNotLoaded = errors.New("config not loaded, please call LoadConfig() first")
 )
 
 // ServiceFactory 定义服务工厂函数的类型，用于创建服务实例

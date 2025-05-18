@@ -403,25 +403,37 @@ func (bs *BrowserServer) handleClick(ctx context.Context, request mcp.CallToolRe
 		bs.Logger.Debug().Str("selector", selector).Err(err).Msg("标准点击方法失败，尝试通过JavaScript点击")
 
 		// 使用JavaScript执行点击操作，这可以绕过一些DOM可见性和交互性问题
-		var clickResult bool
 		jsClick := fmt.Sprintf(`
 			(function() {
-				const el = document.querySelector('%s');
-				if (el) {
+				try {
+					const el = document.querySelector(%s);
+					if (!el) return { success: false, error: "元素不存在" };
+					
+					// 尝试点击元素
 					el.click();
-					return true;
+					
+					return { success: true };
+				} catch(e) {
+					return { success: false, error: e.message };
 				}
-				return false;
 			})()
-		`, selector)
+		`, safeJSONString(selector))
 
+		// 使用结构化结果
+		var clickResult map[string]interface{}
 		err = chromedp.Run(runCtx, chromedp.Evaluate(jsClick, &clickResult))
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Errorf("无法点击元素(JS方法也失败): %v", err).Error()), nil
+			return mcp.NewToolResultError(fmt.Errorf("无法执行点击脚本: %v", err).Error()), nil
 		}
 
-		if !clickResult {
-			return mcp.NewToolResultError(fmt.Sprintf("找不到要点击的元素: %s", selector)), nil
+		// 检查脚本执行结果
+		success, ok := clickResult["success"].(bool)
+		if !ok || !success {
+			errorMsg := "未知错误"
+			if errMsg, hasErr := clickResult["error"].(string); hasErr {
+				errorMsg = errMsg
+			}
+			return mcp.NewToolResultError(fmt.Sprintf("点击失败: %s", errorMsg)), nil
 		}
 
 		bs.Logger.Debug().Str("selector", selector).Msg("通过JavaScript成功点击元素")
@@ -463,29 +475,42 @@ func (bs *BrowserServer) handleFill(ctx context.Context, request mcp.CallToolReq
 	if err != nil {
 		bs.Logger.Debug().Str("selector", selector).Err(err).Msg("标准填写方法失败，尝试通过JavaScript设置值")
 
-		// 使用JavaScript设置输入字段的值
+		// 使用JavaScript设置输入字段的值，使用JSON安全处理的字符串
 		jsFill := fmt.Sprintf(`
 			(function() {
-				const el = document.querySelector('%s');
-				if (el) {
-					el.value = '%s';
+				try {
+					const el = document.querySelector(%s);
+					if (!el) return { success: false, error: "元素不存在" };
+					
+					// 设置值，使用安全处理过的字符串
+					el.value = %s;
+					
 					// 触发输入事件，确保表单验证和事件监听器被触发
 					const event = new Event('input', { bubbles: true });
 					el.dispatchEvent(event);
-					return true;
+					
+					return { success: true };
+				} catch(e) {
+					return { success: false, error: e.message };
 				}
-				return false;
 			})()
-		`, selector, strings.Replace(value, "'", "\\'", -1))
+		`, safeJSONString(selector), safeJSONString(value))
 
-		var fillResult bool
+		// 使用更复杂的结果对象来接收信息
+		var fillResult map[string]interface{}
 		err = chromedp.Run(runCtx, chromedp.Evaluate(jsFill, &fillResult))
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Errorf("无法填写输入字段(JS方法也失败): %v", err).Error()), nil
+			return mcp.NewToolResultError(fmt.Errorf("无法执行填写脚本: %v", err).Error()), nil
 		}
 
-		if !fillResult {
-			return mcp.NewToolResultError(fmt.Sprintf("找不到输入字段: %s", selector)), nil
+		// 检查脚本执行结果
+		success, ok := fillResult["success"].(bool)
+		if !ok || !success {
+			errorMsg := "未知错误"
+			if errMsg, hasErr := fillResult["error"].(string); hasErr {
+				errorMsg = errMsg
+			}
+			return mcp.NewToolResultError(fmt.Sprintf("填写失败: %s", errorMsg)), nil
 		}
 
 		bs.Logger.Debug().Str("selector", selector).Msg("通过JavaScript成功填写输入字段")
@@ -494,6 +519,15 @@ func (bs *BrowserServer) handleFill(ctx context.Context, request mcp.CallToolReq
 
 	bs.Logger.Debug().Str("selector", selector).Msg("成功填写输入字段")
 	return mcp.NewToolResultText(fmt.Sprintf("填写了输入字段 %s，值为 %s", selector, value)), nil
+}
+
+// 安全处理JSON编码的辅助函数
+func safeJSONString(s string) string {
+	bytes, err := json.Marshal(s)
+	if err != nil {
+		return `"` + strings.Replace(s, `"`, `\"`, -1) + `"`
+	}
+	return string(bytes)
 }
 
 func (bs *BrowserServer) handleSelect(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -527,29 +561,44 @@ func (bs *BrowserServer) handleSelect(ctx context.Context, request mcp.CallToolR
 		// 使用JavaScript设置选择器的值
 		jsSelect := fmt.Sprintf(`
 			(function() {
-				const selectEl = document.querySelector('%s');
-				if (!selectEl) return false;
-				
-				// 直接设置值
-				selectEl.value = '%s';
-				
-				// 触发change事件，确保其他JavaScript代码能够响应此变化
-				const event = new Event('change', { bubbles: true });
-				selectEl.dispatchEvent(event);
-				
-				// 检查是否设置成功
-				return selectEl.value === '%s';
+				try {
+					const selectEl = document.querySelector(%s);
+					if (!selectEl) return { success: false, error: "选择器元素不存在" };
+					
+					// 直接设置值
+					selectEl.value = %s;
+					
+					// 触发change事件，确保其他JavaScript代码能够响应此变化
+					const event = new Event('change', { bubbles: true });
+					selectEl.dispatchEvent(event);
+					
+					// 检查是否设置成功
+					if (selectEl.value !== %s) {
+						return { success: false, error: "无法设置选择器值，可能没有匹配的选项" };
+					}
+					
+					return { success: true };
+				} catch(e) {
+					return { success: false, error: e.message };
+				}
 			})()
-		`, selector, strings.Replace(value, "'", "\\'", -1), strings.Replace(value, "'", "\\'", -1))
+		`, safeJSONString(selector), safeJSONString(value), safeJSONString(value))
 
-		var selectResult bool
+		// 使用结构化结果
+		var selectResult map[string]interface{}
 		err = chromedp.Run(runCtx, chromedp.Evaluate(jsSelect, &selectResult))
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Errorf("无法设置选择器(JS方法也失败): %v", err).Error()), nil
+			return mcp.NewToolResultError(fmt.Errorf("无法执行选择脚本: %v", err).Error()), nil
 		}
 
-		if !selectResult {
-			return mcp.NewToolResultError(fmt.Sprintf("无法在选择器 %s 中设置值 %s", selector, value)), nil
+		// 检查脚本执行结果
+		success, ok := selectResult["success"].(bool)
+		if !ok || !success {
+			errorMsg := "未知错误"
+			if errMsg, hasErr := selectResult["error"].(string); hasErr {
+				errorMsg = errMsg
+			}
+			return mcp.NewToolResultError(fmt.Sprintf("选择失败: %s", errorMsg)), nil
 		}
 
 		bs.Logger.Debug().Str("selector", selector).Msg("通过JavaScript成功设置选择器")
@@ -581,7 +630,7 @@ func (bs *BrowserServer) handleHover(ctx context.Context, request mcp.CallToolRe
 		chromedp.WaitVisible(selector), // 等待元素可见
 		chromedp.Evaluate(`
 			(function() {
-				const el = document.querySelector('`+selector+`');
+				const el = document.querySelector(`+safeJSONString(selector)+`);
 				if (!el) return false;
 				el.dispatchEvent(new Event('mouseover', {bubbles: true}));
 				el.dispatchEvent(new Event('mouseenter', {bubbles: false}));
@@ -598,8 +647,8 @@ func (bs *BrowserServer) handleHover(ctx context.Context, request mcp.CallToolRe
 		jsHover := fmt.Sprintf(`
 			(function() {
 				try {
-					const el = document.querySelector('%s');
-					if (!el) return false;
+					const el = document.querySelector(%s);
+					if (!el) return { success: false, error: "元素不存在" };
 					
 					// 尝试模拟完整的鼠标悬停事件序列
 					['mouseenter', 'mouseover', 'mousemove'].forEach(type => {
@@ -610,21 +659,28 @@ func (bs *BrowserServer) handleHover(ctx context.Context, request mcp.CallToolRe
 						});
 						el.dispatchEvent(event);
 					});
-					return true;
+					return { success: true };
 				} catch(e) {
-					console.error('Hover error:', e);
-					return false;
+					return { success: false, error: e.message };
 				}
 			})()
-		`, selector)
+		`, safeJSONString(selector))
 
-		err = chromedp.Run(runCtx, chromedp.Evaluate(jsHover, &res))
+		// 使用结构化结果
+		var hoverResult map[string]interface{}
+		err = chromedp.Run(runCtx, chromedp.Evaluate(jsHover, &hoverResult))
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Errorf("无法悬停在元素上(JS方法也失败): %v", err).Error()), nil
+			return mcp.NewToolResultError(fmt.Errorf("无法执行悬停脚本: %v", err).Error()), nil
 		}
 
-		if !res {
-			return mcp.NewToolResultError(fmt.Sprintf("找不到要悬停的元素: %s", selector)), nil
+		// 检查脚本执行结果
+		success, ok := hoverResult["success"].(bool)
+		if !ok || !success {
+			errorMsg := "未知错误"
+			if errMsg, hasErr := hoverResult["error"].(string); hasErr {
+				errorMsg = errMsg
+			}
+			return mcp.NewToolResultError(fmt.Sprintf("悬停失败: %s", errorMsg)), nil
 		}
 
 		bs.Logger.Debug().Str("selector", selector).Msg("通过JavaScript成功悬停在元素上")
@@ -649,120 +705,136 @@ func (bs *BrowserServer) handleEvaluate(ctx context.Context, request mcp.CallToo
 	runCtx, cancelFunc := context.WithTimeout(bs.Context, timeoutDuration)
 	defer cancelFunc()
 
-	// 检查是否包含可能的DOM选择器，如document.querySelector
+	// 始终检查脚本并包装，确保可以处理return语句和DOM操作
+	hasReturnStatement := strings.Contains(script, "return ") && !strings.HasPrefix(script, "(function")
 	hasDOMSelector := strings.Contains(script, "querySelector") || strings.Contains(script, "getElementById") ||
 		strings.Contains(script, "getElementsBy")
 
-	if hasDOMSelector {
-		// 如果脚本包含DOM选择器，我们预先检查它是否试图操作不存在的元素
-		// 这里我们自动将脚本包装在安全代码中
-		bs.Logger.Debug().Msg("检测到DOM操作，添加安全检查")
+	// 一般情况下直接将脚本包装在自执行函数中
+	if hasReturnStatement || hasDOMSelector {
+		bs.Logger.Debug().
+			Bool("hasReturn", hasReturnStatement).
+			Bool("hasDOMSelector", hasDOMSelector).
+			Msg("检测到需要包装的脚本")
 
-		// 提取可能的选择器，这是试探性的，不总是能精确匹配所有情况
-		selectorRegex := regexp.MustCompile(`querySelector\(['"]([^'"]+)['"]\)`)
-		matches := selectorRegex.FindStringSubmatch(script)
+		// 如果包含DOM选择器，尝试提取并检查元素
+		if hasDOMSelector {
+			bs.Logger.Debug().Msg("检测到DOM操作，添加安全检查")
 
-		if len(matches) > 1 {
-			selector := matches[1]
-			bs.Logger.Debug().Str("selector", selector).Msg("检测到选择器")
+			// 提取可能的选择器，这是试探性的，不总是能精确匹配所有情况
+			selectorRegex := regexp.MustCompile(`querySelector\(['"]([^'"]+)['"]\)`)
+			matches := selectorRegex.FindStringSubmatch(script)
 
-			// 先检查元素是否存在
-			var exists bool
-			checkScript := fmt.Sprintf(`document.querySelector('%s') !== null`, selector)
-			err := chromedp.Run(runCtx, chromedp.Evaluate(checkScript, &exists))
+			if len(matches) > 1 {
+				selector := matches[1]
+				bs.Logger.Debug().Str("selector", selector).Msg("检测到选择器")
 
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Errorf("检查元素存在性时出错: %v", err).Error()), nil
-			}
+				// 先检查元素是否存在
+				var exists bool
+				checkScript := fmt.Sprintf(`document.querySelector(%s) !== null`, safeJSONString(selector))
+				err := chromedp.Run(runCtx, chromedp.Evaluate(checkScript, &exists))
 
-			if !exists {
-				// 如果元素不存在，获取页面中所有同类型元素的信息
-				var suggestions []string
-				suggestionsScript := ""
+				if err != nil {
+					bs.Logger.Warn().Err(err).Str("selector", selector).Msg("检查元素存在性时出错，继续执行")
+				} else if !exists {
+					// 如果元素不存在，获取页面中所有同类型元素的信息
+					var suggestions []interface{}
+					suggestionsScript := ""
 
-				// 根据选择器类型给出建议
-				if strings.Contains(selector, "textarea") {
-					suggestionsScript = `Array.from(document.querySelectorAll('textarea')).map(el => ({ tag: 'textarea', id: el.id, name: el.name, class: el.className }))`
-				} else if strings.Contains(selector, "input") {
-					suggestionsScript = `Array.from(document.querySelectorAll('input')).map(el => ({ tag: 'input', type: el.type, id: el.id, name: el.name, class: el.className }))`
-				} else {
-					// 通用选择器，获取该标签的所有实例
-					tagMatch := regexp.MustCompile(`(\w+)(\[|\.|\#|$)`).FindStringSubmatch(selector)
-					if len(tagMatch) > 1 {
-						tag := tagMatch[1]
-						suggestionsScript = fmt.Sprintf(`Array.from(document.querySelectorAll('%s')).map(el => ({ tag: '%s', id: el.id, name: el.getAttribute('name'), class: el.className }))`, tag, tag)
+					// 根据选择器类型给出建议
+					if strings.Contains(selector, "textarea") {
+						suggestionsScript = `Array.from(document.querySelectorAll('textarea')).map(el => ({ tag: 'textarea', id: el.id, name: el.name, class: el.className }))`
+					} else if strings.Contains(selector, "input") {
+						suggestionsScript = `Array.from(document.querySelectorAll('input')).map(el => ({ tag: 'input', type: el.type, id: el.id, name: el.name, class: el.className }))`
 					} else {
-						suggestionsScript = `Array.from(document.querySelectorAll('*')).filter(el => el.id || el.name).map(el => ({ tag: el.tagName.toLowerCase(), id: el.id, name: el.getAttribute('name'), class: el.className }))`
+						// 通用选择器，获取该标签的所有实例
+						tagMatch := regexp.MustCompile(`(\w+)(\[|\.|\#|$)`).FindStringSubmatch(selector)
+						if len(tagMatch) > 1 {
+							tag := tagMatch[1]
+							suggestionsScript = fmt.Sprintf(`Array.from(document.querySelectorAll('%s')).map(el => ({ tag: '%s', id: el.id, name: el.getAttribute('name'), class: el.className }))`, tag, tag)
+						} else {
+							suggestionsScript = `Array.from(document.querySelectorAll('*')).filter(el => el.id || el.name).map(el => ({ tag: el.tagName.toLowerCase(), id: el.id, name: el.getAttribute('name'), class: el.className }))`
+						}
+					}
+
+					// 获取页面上的相似元素
+					if suggestionsScript != "" {
+						err = chromedp.Run(runCtx, chromedp.Evaluate(suggestionsScript, &suggestions))
+						if err == nil && len(suggestions) > 0 {
+							suggestionStr, _ := json.Marshal(suggestions)
+							bs.Logger.Warn().
+								Str("selector", selector).
+								Str("suggestions", string(suggestionStr)).
+								Msg("元素不存在，但找到了相似元素")
+							// 这里我们只记录警告，不再直接返回错误，让脚本继续执行
+							// 因为有些脚本会处理元素不存在的情况
+						}
 					}
 				}
-
-				// 获取页面上的相似元素
-				if suggestionsScript != "" {
-					err = chromedp.Run(runCtx, chromedp.Evaluate(suggestionsScript, &suggestions))
-					if err == nil && len(suggestions) > 0 {
-						suggestionStr, _ := json.Marshal(suggestions)
-						return mcp.NewToolResultError(fmt.Sprintf("元素 '%s' 不存在。页面上的相似元素: %s", selector, string(suggestionStr))), nil
-					}
-				}
-
-				return mcp.NewToolResultError(fmt.Sprintf("元素 '%s' 不存在", selector)), nil
 			}
 		}
 
-		// 自动将脚本包装在错误处理代码中
-		script = fmt.Sprintf(`
-			(function() {
+		// 无论是否包含DOM选择器，都包装脚本以处理return语句和错误捕获
+		wrappedScript := fmt.Sprintf(`
+			(function() { 
 				try {
-					%s
-					return { success: true };
+					%s 
 				} catch(e) {
 					return { 
 						success: false, 
 						error: e.message,
 						stack: e.stack,
-						details: {
-							type: e.name,
-							lineNumber: e.lineNumber,
-							columnNumber: e.columnNumber
-						}
+						type: e.name
 					};
 				}
 			})()
 		`, script)
-	} else if strings.Contains(script, "return ") && !strings.HasPrefix(script, "(function") {
-		// 仅处理return语句，不包含DOM选择器
-		bs.Logger.Debug().Msg("检测到脚本中有return语句，自动包装为自执行函数")
-		script = fmt.Sprintf(`(function() { %s })()`, script)
+
+		script = wrappedScript
 	}
 
 	// 执行脚本
 	var result interface{}
 	err := chromedp.Run(runCtx, chromedp.Evaluate(script, &result))
+
+	// 如果执行失败，尝试修复
 	if err != nil {
-		// 如果执行失败，尝试修复常见错误并重试
 		if strings.Contains(err.Error(), "Illegal return statement") {
-			bs.Logger.Debug().Msg("检测到非法的return语句，尝试使用自执行函数包装")
+			bs.Logger.Debug().Msg("检测到非法的return语句，尝试更强健的包装方式")
 
-			// 移除可能的直接返回语句，使用变量赋值替代
-			fixedScript := strings.ReplaceAll(script, "return ", "const __result = ")
-			fixedScript = strings.TrimRight(fixedScript, ";") + "; __result;"
-
-			err = chromedp.Run(runCtx, chromedp.Evaluate(fixedScript, &result))
-			if err != nil {
-				// 最后尝试完全包装的方式
-				wrapperScript := fmt.Sprintf(`
-					(function() { 
-						try {
+			// 使用替代方式处理return语句
+			alternativeScript := fmt.Sprintf(`
+				(function() {
+					let __result;
+					try {
+						__result = (function() {
 							%s
+						})();
+						return { success: true, result: __result };
+					} catch(e) {
+						return { success: false, error: e.message };
+					}
+				})()
+			`, strings.ReplaceAll(script, "return ", "__result = "))
+
+			err = chromedp.Run(runCtx, chromedp.Evaluate(alternativeScript, &result))
+			if err != nil {
+				// 最后一个尝试
+				lastResortScript := fmt.Sprintf(`
+					(function() {
+						try {
+							const fn = new Function('return (function() { %s })()')
+							const result = fn();
+							return { success: true, result: result };
 						} catch(e) {
-							return { error: e.message };
+							return { success: false, error: e.message };
 						}
 					})()
-				`, script)
+				`, strings.ReplaceAll(script, "return ", "return "))
 
-				err = chromedp.Run(runCtx, chromedp.Evaluate(wrapperScript, &result))
+				err = chromedp.Run(runCtx, chromedp.Evaluate(lastResortScript, &result))
 				if err != nil {
-					return mcp.NewToolResultError(fmt.Errorf("无法执行修复后的脚本: %v", err).Error()), nil
+					return mcp.NewToolResultError(fmt.Errorf("尝试所有方法后仍无法执行脚本: %v", err).Error()), nil
 				}
 			}
 		} else {
@@ -772,10 +844,16 @@ func (bs *BrowserServer) handleEvaluate(ctx context.Context, request mcp.CallToo
 
 	// 检查返回的结果是否包含错误信息
 	if resultMap, ok := result.(map[string]interface{}); ok {
+		// 先检查是否有错误
 		if success, exists := resultMap["success"].(bool); exists && !success {
 			if errorMsg, hasError := resultMap["error"].(string); hasError {
 				return mcp.NewToolResultError(fmt.Sprintf("脚本执行遇到错误: %s", errorMsg)), nil
 			}
+		}
+
+		// 如果有result字段，则返回它，这是我们包装后的结果
+		if actualResult, hasResult := resultMap["result"]; hasResult && resultMap["success"] == true {
+			result = actualResult
 		}
 	}
 
