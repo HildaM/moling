@@ -30,7 +30,7 @@ import (
 
 	"github.com/gojue/moling/pkg/comm"
 	"github.com/gojue/moling/pkg/config"
-	"github.com/gojue/moling/pkg/services"
+	"github.com/gojue/moling/pkg/services/abstract"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/rs/zerolog"
 )
@@ -39,14 +39,14 @@ import (
 type MoLingServer struct {
 	ctx        context.Context     // 上下文
 	server     *server.MCPServer   // MCP服务器实例
-	services   []services.Service  // 服务列表
+	services   []abstract.Service  // 服务列表
 	logger     zerolog.Logger      // 日志记录器
 	mlConfig   config.MoLingConfig // 配置
 	listenAddr string              // SSE模式监听地址，如果为空，则使用STDIO模式
 }
 
 // NewMoLingServer 创建MoLingServer实例
-func NewMoLingServer(ctx context.Context, srvs []services.Service, mlConfig config.MoLingConfig) (*MoLingServer, error) {
+func NewMoLingServer(ctx context.Context, srvs []abstract.Service, mlConfig config.MoLingConfig) (*MoLingServer, error) {
 	mcpServer := server.NewMCPServer(
 		mlConfig.ServerName,
 		mlConfig.Version,
@@ -81,7 +81,7 @@ func (m *MoLingServer) init() error {
 }
 
 // loadService 加载服务
-func (m *MoLingServer) loadService(srv services.Service) error {
+func (m *MoLingServer) loadService(srv abstract.Service) error {
 
 	// 添加资源
 	for r, rhf := range srv.Resources() {

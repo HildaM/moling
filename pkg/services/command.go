@@ -52,7 +52,7 @@ type CommandServer struct {
 }
 
 // NewCommandServer creates a new CommandServer with the given allowed commands.
-func NewCommandServer(ctx context.Context) (Service, error) {
+func NewCommandServer(ctx context.Context) (abstract.Service, error) {
 	var err error
 	cc := NewCommandConfig()
 	gConf, ok := ctx.Value(comm.MoLingConfigKey).(*config.MoLingConfig)

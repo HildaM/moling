@@ -18,17 +18,23 @@ package services
 
 import (
 	"github.com/gojue/moling/pkg/comm"
+	"github.com/gojue/moling/pkg/services/abstract"
+	"github.com/gojue/moling/pkg/services/browser"
 )
 
-var serviceLists = make(map[comm.MoLingServerType]ServiceFactory)
+var serviceLists = make(map[comm.MoLingServerType]abstract.ServiceFactory)
 
 // RegisterServ register service
-func RegisterServ(n comm.MoLingServerType, f ServiceFactory) {
+func RegisterServ(n comm.MoLingServerType, f abstract.ServiceFactory) {
 	//serviceLists = append(, f)
 	serviceLists[n] = f
 }
 
 // ServiceList  get service lists
-func ServiceList() map[comm.MoLingServerType]ServiceFactory {
+func ServiceList() map[comm.MoLingServerType]abstract.ServiceFactory {
 	return serviceLists
+}
+
+func init() {
+	RegisterServ(browser.BrowserServerName, browser.NewBrowserServer)
 }

@@ -31,7 +31,6 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/gojue/moling/pkg/comm"
 	"github.com/gojue/moling/pkg/config"
-	"github.com/gojue/moling/pkg/services"
 	"github.com/gojue/moling/pkg/services/abstract"
 	"github.com/gojue/moling/pkg/utils"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -44,10 +43,6 @@ const (
 	BrowserServerName comm.MoLingServerType = "Browser"
 )
 
-func init() {
-	services.RegisterServ(BrowserServerName, NewBrowserServer)
-}
-
 // BrowserServer represents the configuration for the browser service.
 type BrowserServer struct {
 	abstract.MLService
@@ -58,7 +53,7 @@ type BrowserServer struct {
 }
 
 // NewBrowserServer creates a new BrowserServer instance with the given context and configuration.
-func NewBrowserServer(ctx context.Context) (services.Service, error) {
+func NewBrowserServer(ctx context.Context) (abstract.Service, error) {
 	// 获取浏览器配置
 	bc := NewBrowserConfig()
 	globalConf := ctx.Value(comm.MoLingConfigKey).(*config.MoLingConfig)

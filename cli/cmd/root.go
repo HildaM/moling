@@ -30,7 +30,7 @@ import (
 
 	"github.com/gojue/moling/cli/cobrautl"
 	"github.com/gojue/moling/pkg/server"
-	"github.com/gojue/moling/pkg/services"
+	"github.com/gojue/moling/pkg/services/abstract"
 	"github.com/gojue/moling/pkg/utils"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
@@ -157,7 +157,7 @@ func loadConfigFile(configFilePath string, logger zerolog.Logger) (map[string]in
 }
 
 // startMoLingServer 启动MoLing服务器
-func startMoLingServer(ctx context.Context, servicesList []services.Service, logger zerolog.Logger) (*server.MoLingServer, error) {
+func startMoLingServer(ctx context.Context, servicesList []abstract.Service, logger zerolog.Logger) (*server.MoLingServer, error) {
 	server, err := server.NewMoLingServer(ctx, servicesList, *mlConfig)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to create server")

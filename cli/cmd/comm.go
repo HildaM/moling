@@ -12,6 +12,7 @@ import (
 	"github.com/gojue/moling/pkg/comm"
 	"github.com/gojue/moling/pkg/config"
 	"github.com/gojue/moling/pkg/services"
+	"github.com/gojue/moling/pkg/services/abstract"
 	"github.com/gojue/moling/pkg/utils"
 	"github.com/rs/zerolog"
 )
@@ -111,7 +112,7 @@ func createContext(logger zerolog.Logger) context.Context {
 }
 
 // initSingleService 初始化单个服务
-func initSingleService(ctx context.Context, serviceType comm.MoLingServerType, serviceFactory services.ServiceFactory, configJson map[string]interface{}) (services.Service, error) {
+func initSingleService(ctx context.Context, serviceType comm.MoLingServerType, serviceFactory abstract.ServiceFactory, configJson map[string]interface{}) (abstract.Service, error) {
 	// 创建服务实例
 	service, err := serviceFactory(ctx)
 	if err != nil {
@@ -139,13 +140,13 @@ func initSingleService(ctx context.Context, serviceType comm.MoLingServerType, s
 }
 
 // initServices 批量初始化服务
-func initServices(ctx context.Context, configJson map[string]interface{}, logger zerolog.Logger) ([]services.Service, map[string]func() error, error) {
+func initServices(ctx context.Context, configJson map[string]interface{}, logger zerolog.Logger) ([]abstract.Service, map[string]func() error, error) {
 	var moduleList []string
 	if mlConfig.Module != "all" {
 		moduleList = strings.Split(mlConfig.Module, ",")
 	}
 
-	var servicesList []services.Service
+	var servicesList []abstract.Service
 	closers := make(map[string]func() error)
 
 	for serviceName, serviceFactory := range services.ServiceList() {

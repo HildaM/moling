@@ -28,6 +28,7 @@ import (
 	"github.com/gojue/moling/pkg/comm"
 	"github.com/gojue/moling/pkg/config"
 	"github.com/gojue/moling/pkg/services"
+	"github.com/gojue/moling/pkg/services/abstract"
 	"github.com/gojue/moling/pkg/utils"
 )
 
@@ -69,7 +70,7 @@ func TestNewMLServer(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to initialize filesystem server: %v", err)
 	}
-	srvs := []services.Service{
+	srvs := []abstract.Service{
 		fs,
 	}
 	srv, err := NewMoLingServer(ctx, srvs, mlConfig)

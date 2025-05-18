@@ -61,7 +61,7 @@ type FilesystemServer struct {
 	config *FileSystemConfig
 }
 
-func NewFilesystemServer(ctx context.Context) (Service, error) {
+func NewFilesystemServer(ctx context.Context) (abstract.Service, error) {
 	// Validate the config
 	var err error
 	globalConf := ctx.Value(comm.MoLingConfigKey).(*config.MoLingConfig)
