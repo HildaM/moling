@@ -30,6 +30,7 @@ import (
 
 	"github.com/gojue/moling/pkg/comm"
 	"github.com/gojue/moling/pkg/config"
+	"github.com/gojue/moling/pkg/services/abstract"
 	"github.com/gojue/moling/pkg/utils"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog"
@@ -56,7 +57,7 @@ type FileInfo struct {
 }
 
 type FilesystemServer struct {
-	MLService
+	abstract.MLService
 	config *FileSystemConfig
 }
 
@@ -78,7 +79,7 @@ func NewFilesystemServer(ctx context.Context) (Service, error) {
 	})
 
 	fs := &FilesystemServer{
-		MLService: NewMLService(ctx, lger.Hook(loggerNameHook), globalConf),
+		MLService: abstract.NewMLService(ctx, lger.Hook(loggerNameHook), globalConf),
 		config:    fc,
 	}
 
@@ -96,7 +97,7 @@ func (fs *FilesystemServer) Init() error {
 		mcp.WithResourceDescription("Access to files and directories on the local file system"),
 	), fs.handleReadResource)
 
-	pe := PromptEntry{
+	pe := abstract.PromptEntry{
 		PromptVar: mcp.Prompt{
 			Name:        "filesystem_prompt",
 			Description: fmt.Sprintf("Get the relevant functions and prompts of the FileSystem MCP Server."),

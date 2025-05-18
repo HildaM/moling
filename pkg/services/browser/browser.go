@@ -15,7 +15,7 @@
 // Repository: https://github.com/gojue/moling
 
 // Package services provides a set of services for the MoLing application.
-package services
+package browser
 
 import (
 	"context"
@@ -31,6 +31,8 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/gojue/moling/pkg/comm"
 	"github.com/gojue/moling/pkg/config"
+	"github.com/gojue/moling/pkg/services"
+	"github.com/gojue/moling/pkg/services/abstract"
 	"github.com/gojue/moling/pkg/utils"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog"
@@ -43,12 +45,12 @@ const (
 )
 
 func init() {
-	RegisterServ(BrowserServerName, NewBrowserServer)
+	services.RegisterServ(BrowserServerName, NewBrowserServer)
 }
 
 // BrowserServer represents the configuration for the browser service.
 type BrowserServer struct {
-	MLService
+	abstract.MLService
 	config       *BrowserConfig
 	name         string // The name of the service
 	cancelAlloc  context.CancelFunc
@@ -56,7 +58,7 @@ type BrowserServer struct {
 }
 
 // NewBrowserServer creates a new BrowserServer instance with the given context and configuration.
-func NewBrowserServer(ctx context.Context) (Service, error) {
+func NewBrowserServer(ctx context.Context) (services.Service, error) {
 	// 获取浏览器配置
 	bc := NewBrowserConfig()
 	globalConf := ctx.Value(comm.MoLingConfigKey).(*config.MoLingConfig)
@@ -74,7 +76,7 @@ func NewBrowserServer(ctx context.Context) (Service, error) {
 
 	// 创建浏览器服务实例
 	bs := &BrowserServer{
-		MLService: NewMLService(ctx, logger.Hook(loggerNameHook), globalConf),
+		MLService: abstract.NewMLService(ctx, logger.Hook(loggerNameHook), globalConf),
 		config:    bc,
 	}
 	if err := bs.InitResources(); err != nil {
@@ -122,7 +124,7 @@ func (bs *BrowserServer) Init() error {
 	)
 
 	// 添加浏览器prompt
-	pe := PromptEntry{
+	pe := abstract.PromptEntry{
 		PromptVar: mcp.Prompt{
 			Name:        "browser_prompt",
 			Description: "Get the relevant functions and prompts of the Browser MCP Server.",

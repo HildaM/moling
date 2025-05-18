@@ -26,6 +26,7 @@ import (
 
 	"github.com/gojue/moling/pkg/comm"
 	"github.com/gojue/moling/pkg/config"
+	"github.com/gojue/moling/pkg/services/abstract"
 	"github.com/gojue/moling/pkg/utils"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog"
@@ -44,7 +45,7 @@ const (
 
 // CommandServer implements the Service interface and provides methods to execute named commands.
 type CommandServer struct {
-	MLService
+	abstract.MLService
 	config    *CommandConfig
 	osName    string
 	osVersion string
@@ -69,7 +70,7 @@ func NewCommandServer(ctx context.Context) (Service, error) {
 	})
 
 	cs := &CommandServer{
-		MLService: NewMLService(ctx, lger.Hook(loggerNameHook), gConf),
+		MLService: abstract.NewMLService(ctx, lger.Hook(loggerNameHook), gConf),
 		config:    cc,
 	}
 
@@ -83,7 +84,7 @@ func NewCommandServer(ctx context.Context) (Service, error) {
 
 func (cs *CommandServer) Init() error {
 	var err error
-	pe := PromptEntry{
+	pe := abstract.PromptEntry{
 		PromptVar: mcp.Prompt{
 			Name:        "command_prompt",
 			Description: fmt.Sprintf("get command prompt"),

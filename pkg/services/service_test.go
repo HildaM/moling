@@ -20,11 +20,12 @@ import (
 	"context"
 	"testing"
 
+	"github.com/gojue/moling/pkg/services/abstract"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func TestMLService_AddResource(t *testing.T) {
-	service := &MLService{}
+	service := &abstract.MLService{}
 	err := service.InitResources()
 	if err != nil {
 		t.Fatalf("Failed to initialize MLService: %v", err)
@@ -51,7 +52,7 @@ func TestMLService_AddResource(t *testing.T) {
 }
 
 func TestMLService_AddResourceTemplate(t *testing.T) {
-	service := &MLService{}
+	service := &abstract.MLService{}
 	err := service.InitResources()
 	if err != nil {
 		t.Fatalf("Failed to initialize MLService: %v", err)
@@ -78,7 +79,7 @@ func TestMLService_AddResourceTemplate(t *testing.T) {
 }
 
 func TestMLService_AddPrompt(t *testing.T) {
-	service := &MLService{}
+	service := &abstract.MLService{}
 	err := service.InitResources()
 	if err != nil {
 		t.Fatalf("Failed to initialize MLService: %v", err)
@@ -98,7 +99,7 @@ func TestMLService_AddPrompt(t *testing.T) {
 			Messages:    pms,
 		}, nil
 	}
-	pe := PromptEntry{
+	pe := abstract.PromptEntry{
 		PromptVar:   mcp.Prompt{Name: "testPrompt"},
 		HandlerFunc: handler,
 	}
@@ -115,7 +116,7 @@ func TestMLService_AddPrompt(t *testing.T) {
 }
 
 func TestMLService_AddTool(t *testing.T) {
-	service := &MLService{}
+	service := &abstract.MLService{}
 	err := service.InitResources()
 	if err != nil {
 		t.Fatalf("Failed to initialize MLService: %v", err)
@@ -145,7 +146,7 @@ func TestMLService_AddTool(t *testing.T) {
 }
 
 func TestMLService_AddNotificationHandler(t *testing.T) {
-	service := &MLService{}
+	service := &abstract.MLService{}
 	err := service.InitResources()
 	if err != nil {
 		t.Fatalf("Failed to initialize MLService: %v", err)
