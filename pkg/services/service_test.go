@@ -25,7 +25,7 @@ import (
 
 func TestMLService_AddResource(t *testing.T) {
 	service := &MLService{}
-	err := service.init()
+	err := service.InitResources()
 	if err != nil {
 		t.Fatalf("Failed to initialize MLService: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestMLService_AddResource(t *testing.T) {
 
 func TestMLService_AddResourceTemplate(t *testing.T) {
 	service := &MLService{}
-	err := service.init()
+	err := service.InitResources()
 	if err != nil {
 		t.Fatalf("Failed to initialize MLService: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestMLService_AddResourceTemplate(t *testing.T) {
 
 func TestMLService_AddPrompt(t *testing.T) {
 	service := &MLService{}
-	err := service.init()
+	err := service.InitResources()
 	if err != nil {
 		t.Fatalf("Failed to initialize MLService: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestMLService_AddPrompt(t *testing.T) {
 
 func TestMLService_AddTool(t *testing.T) {
 	service := &MLService{}
-	err := service.init()
+	err := service.InitResources()
 	if err != nil {
 		t.Fatalf("Failed to initialize MLService: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestMLService_AddTool(t *testing.T) {
 
 func TestMLService_AddNotificationHandler(t *testing.T) {
 	service := &MLService{}
-	err := service.init()
+	err := service.InitResources()
 	if err != nil {
 		t.Fatalf("Failed to initialize MLService: %v", err)
 	}

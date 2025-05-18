@@ -68,7 +68,7 @@ func NewBrowserServer(ctx context.Context) (Service, error) {
 		config:    bc,
 	}
 
-	err := bs.init()
+	err := bs.InitResources()
 	if err != nil {
 		return nil, err
 	}

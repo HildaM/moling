@@ -105,7 +105,7 @@ type MLService struct {
 }
 
 // init initializes the MLService with empty maps and a mutex.
-func (mls *MLService) init() error {
+func (mls *MLService) InitResources() error {
 	if mls.lock == nil {
 		mls.lock = &sync.Mutex{}
 	}

@@ -73,7 +73,7 @@ func NewCommandServer(ctx context.Context) (Service, error) {
 		config:    cc,
 	}
 
-	err = cs.init()
+	err = cs.InitResources()
 	if err != nil {
 		return nil, err
 	}
