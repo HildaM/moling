@@ -328,25 +328,51 @@ func (bs *BrowserServer) handleScreenshot(ctx context.Context, request mcp.CallT
 	if height == 0 {
 		height = 800
 	}
+
+	// 记录尝试截图操作
+	bs.Logger.Debug().
+		Str("name", name).
+		Str("selector", selector).
+		Int("width", width).
+		Int("height", height).
+		Msg("尝试截取屏幕截图")
+
+	// 设置更长的超时时间
+	timeoutDuration := time.Duration(bs.config.SelectorQueryTimeout*3) * time.Second
+	runCtx, cancelFunc := context.WithTimeout(bs.Context, timeoutDuration)
+	defer cancelFunc()
+
 	var buf []byte
 	var err error
-	runCtx, cancelFunc := context.WithTimeout(bs.Context, time.Duration(bs.config.SelectorQueryTimeout)*time.Second)
-	defer cancelFunc()
+
+	// 根据是否提供选择器决定截取全屏还是特定元素
 	if selector == "" {
-		err = chromedp.Run(runCtx, chromedp.FullScreenshot(&buf, 90))
+		// 全屏截图
+		err = chromedp.Run(runCtx,
+			chromedp.EmulateViewport(int64(width), int64(height)), // 设置视口大小
+			chromedp.FullScreenshot(&buf, 90),                     // 90% 质量
+		)
 	} else {
-		err = chromedp.Run(bs.Context, chromedp.Screenshot(selector, &buf, chromedp.NodeVisible))
-	}
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to take screenshot: %v", err)), nil
+		// 元素截图，确保使用相同的上下文
+		err = chromedp.Run(runCtx,
+			chromedp.WaitVisible(selector), // 等待元素可见
+			chromedp.Screenshot(selector, &buf, chromedp.NodeVisible),
+		)
 	}
 
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("截图失败: %v", err)), nil
+	}
+
+	// 使用随机数确保文件名唯一
 	newName := filepath.Join(bs.config.DataPath, fmt.Sprintf("%s_%d.png", strings.TrimRight(name, ".png"), rand.Int()))
 	err = os.WriteFile(newName, buf, 0644)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to save screenshot: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("保存截图失败: %v", err)), nil
 	}
-	return mcp.NewToolResultText(fmt.Sprintf("Screenshot saved to:%s", newName)), nil
+
+	bs.Logger.Debug().Str("path", newName).Msg("成功保存截图")
+	return mcp.NewToolResultText(fmt.Sprintf("截图已保存至: %s", newName)), nil
 }
 
 // handleClick handles the click action on a specified element.
@@ -356,31 +382,53 @@ func (bs *BrowserServer) handleClick(ctx context.Context, request mcp.CallToolRe
 		return mcp.NewToolResultError(fmt.Sprintf("selector must be a string:%v", selector)), nil
 	}
 
-	bs.Logger.Debug().Str("selector", selector).Msg("Attempting to click element")
+	// 记录尝试点击的元素选择器
+	bs.Logger.Debug().Str("selector", selector).Msg("尝试点击元素")
 
-	// Use a longer timeout for the click operation, which may take longer than simple queries
+	// 设置更长的超时时间，以确保有足够时间执行操作
 	timeoutDuration := time.Duration(bs.config.SelectorQueryTimeout*3) * time.Second
 	runCtx, cancelFunc := context.WithTimeout(bs.Context, timeoutDuration)
 	defer cancelFunc()
 
-	// Split the operations to better identify which one is causing the timeout
-	err := chromedp.Run(runCtx, chromedp.WaitReady("body", chromedp.ByQuery))
+	// 先尝试合并所有操作，避免分割操作可能引起的上下文问题
+	err := chromedp.Run(runCtx,
+		chromedp.WaitReady("body"),     // 等待页面主体加载完成
+		chromedp.WaitVisible(selector), // 等待目标元素可见
+		chromedp.Click(selector),       // 点击目标元素
+	)
+
+	// 如果合并操作失败，尝试使用JavaScript直接点击
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Errorf("failed waiting for body to be ready: %v", err).Error()), nil
+		bs.Logger.Debug().Str("selector", selector).Err(err).Msg("标准点击方法失败，尝试通过JavaScript点击")
+
+		// 使用JavaScript执行点击操作，这可以绕过一些DOM可见性和交互性问题
+		var clickResult bool
+		jsClick := fmt.Sprintf(`
+			(function() {
+				const el = document.querySelector('%s');
+				if (el) {
+					el.click();
+					return true;
+				}
+				return false;
+			})()
+		`, selector)
+
+		err = chromedp.Run(runCtx, chromedp.Evaluate(jsClick, &clickResult))
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Errorf("无法点击元素(JS方法也失败): %v", err).Error()), nil
+		}
+
+		if !clickResult {
+			return mcp.NewToolResultError(fmt.Sprintf("找不到要点击的元素: %s", selector)), nil
+		}
+
+		bs.Logger.Debug().Str("selector", selector).Msg("通过JavaScript成功点击元素")
+		return mcp.NewToolResultText(fmt.Sprintf("通过JavaScript点击了元素 %s", selector)), nil
 	}
 
-	err = chromedp.Run(runCtx, chromedp.WaitVisible(selector, chromedp.ByQuery))
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Errorf("failed waiting for element to be visible: %v", err).Error()), nil
-	}
-
-	err = chromedp.Run(runCtx, chromedp.Click(selector, chromedp.NodeVisible))
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Errorf("failed to click element: %v", err).Error()), nil
-	}
-
-	bs.Logger.Debug().Str("selector", selector).Msg("Successfully clicked element")
-	return mcp.NewToolResultText(fmt.Sprintf("Clicked element %s", selector)), nil
+	bs.Logger.Debug().Str("selector", selector).Msg("成功点击元素")
+	return mcp.NewToolResultText(fmt.Sprintf("点击了元素 %s", selector)), nil
 }
 
 // handleFill handles the fill action on a specified input field.
@@ -395,27 +443,56 @@ func (bs *BrowserServer) handleFill(ctx context.Context, request mcp.CallToolReq
 		return mcp.NewToolResultError(fmt.Sprintf("failed to fill input field: %v, selector:%v", request.Params.Arguments["value"], selector)), nil
 	}
 
-	bs.Logger.Debug().Str("selector", selector).Str("value", value).Msg("Attempting to fill input field")
+	// 记录尝试填写的输入字段
+	bs.Logger.Debug().Str("selector", selector).Str("value", value).Msg("尝试填写输入字段")
 
-	// Use a longer timeout for input operations
+	// 设置更长的超时时间
 	timeoutDuration := time.Duration(bs.config.SelectorQueryTimeout*3) * time.Second
 	runCtx, cancelFunc := context.WithTimeout(bs.Context, timeoutDuration)
 	defer cancelFunc()
 
-	// First wait for the element to be visible
-	err := chromedp.Run(runCtx, chromedp.WaitVisible(selector, chromedp.ByQuery))
+	// 合并操作：等待元素可见并填写内容
+	err := chromedp.Run(runCtx,
+		chromedp.WaitVisible(selector),     // 等待输入字段可见
+		chromedp.Clear(selector),           // 清除现有内容
+		chromedp.SendKeys(selector, value), // 输入新内容
+	)
+
+	// 如果标准方法失败，尝试使用JavaScript设置值
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Errorf("failed waiting for input field to be visible: %v", err).Error()), nil
+		bs.Logger.Debug().Str("selector", selector).Err(err).Msg("标准填写方法失败，尝试通过JavaScript设置值")
+
+		// 使用JavaScript设置输入字段的值
+		jsFill := fmt.Sprintf(`
+			(function() {
+				const el = document.querySelector('%s');
+				if (el) {
+					el.value = '%s';
+					// 触发输入事件，确保表单验证和事件监听器被触发
+					const event = new Event('input', { bubbles: true });
+					el.dispatchEvent(event);
+					return true;
+				}
+				return false;
+			})()
+		`, selector, strings.Replace(value, "'", "\\'", -1))
+
+		var fillResult bool
+		err = chromedp.Run(runCtx, chromedp.Evaluate(jsFill, &fillResult))
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Errorf("无法填写输入字段(JS方法也失败): %v", err).Error()), nil
+		}
+
+		if !fillResult {
+			return mcp.NewToolResultError(fmt.Sprintf("找不到输入字段: %s", selector)), nil
+		}
+
+		bs.Logger.Debug().Str("selector", selector).Msg("通过JavaScript成功填写输入字段")
+		return mcp.NewToolResultText(fmt.Sprintf("通过JavaScript填写了输入字段 %s，值为 %s", selector, value)), nil
 	}
 
-	// Then send keys to it
-	err = chromedp.Run(runCtx, chromedp.SendKeys(selector, value, chromedp.NodeVisible))
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Errorf("failed to fill input field: %v", err).Error()), nil
-	}
-
-	bs.Logger.Debug().Str("selector", selector).Msg("Successfully filled input field")
-	return mcp.NewToolResultText(fmt.Sprintf("Filled input %s with value %s", selector, value)), nil
+	bs.Logger.Debug().Str("selector", selector).Msg("成功填写输入字段")
+	return mcp.NewToolResultText(fmt.Sprintf("填写了输入字段 %s，值为 %s", selector, value)), nil
 }
 
 func (bs *BrowserServer) handleSelect(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -428,27 +505,58 @@ func (bs *BrowserServer) handleSelect(ctx context.Context, request mcp.CallToolR
 		return mcp.NewToolResultError(fmt.Sprintf("failed to select value:%v", request.Params.Arguments["value"])), nil
 	}
 
-	bs.Logger.Debug().Str("selector", selector).Str("value", value).Msg("Attempting to select value")
+	// 记录尝试选择的下拉菜单和值
+	bs.Logger.Debug().Str("selector", selector).Str("value", value).Msg("尝试设置下拉菜单选项")
 
-	// Use a longer timeout for selection operations
+	// 设置更长的超时时间
 	timeoutDuration := time.Duration(bs.config.SelectorQueryTimeout*3) * time.Second
 	runCtx, cancelFunc := context.WithTimeout(bs.Context, timeoutDuration)
 	defer cancelFunc()
 
-	// First wait for the element to be visible
-	err := chromedp.Run(runCtx, chromedp.WaitVisible(selector, chromedp.ByQuery))
+	// 合并操作：等待元素可见并设置值
+	err := chromedp.Run(runCtx,
+		chromedp.WaitVisible(selector),     // 等待选择器可见
+		chromedp.SetValue(selector, value), // 设置选择器的值
+	)
+
+	// 如果标准方法失败，尝试使用JavaScript设置选项
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Errorf("failed waiting for select element to be visible: %v", err).Error()), nil
+		bs.Logger.Debug().Str("selector", selector).Err(err).Msg("标准选择方法失败，尝试通过JavaScript设置选项")
+
+		// 使用JavaScript设置选择器的值
+		jsSelect := fmt.Sprintf(`
+			(function() {
+				const selectEl = document.querySelector('%s');
+				if (!selectEl) return false;
+				
+				// 直接设置值
+				selectEl.value = '%s';
+				
+				// 触发change事件，确保其他JavaScript代码能够响应此变化
+				const event = new Event('change', { bubbles: true });
+				selectEl.dispatchEvent(event);
+				
+				// 检查是否设置成功
+				return selectEl.value === '%s';
+			})()
+		`, selector, strings.Replace(value, "'", "\\'", -1), strings.Replace(value, "'", "\\'", -1))
+
+		var selectResult bool
+		err = chromedp.Run(runCtx, chromedp.Evaluate(jsSelect, &selectResult))
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Errorf("无法设置选择器(JS方法也失败): %v", err).Error()), nil
+		}
+
+		if !selectResult {
+			return mcp.NewToolResultError(fmt.Sprintf("无法在选择器 %s 中设置值 %s", selector, value)), nil
+		}
+
+		bs.Logger.Debug().Str("selector", selector).Msg("通过JavaScript成功设置选择器")
+		return mcp.NewToolResultText(fmt.Sprintf("通过JavaScript在选择器 %s 中选择了值 %s", selector, value)), nil
 	}
 
-	// Then set the value
-	err = chromedp.Run(runCtx, chromedp.SetValue(selector, value, chromedp.NodeVisible))
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Errorf("failed to select value: %v", err).Error()), nil
-	}
-
-	bs.Logger.Debug().Str("selector", selector).Str("value", value).Msg("Successfully selected value")
-	return mcp.NewToolResultText(fmt.Sprintf("Selected value %s for element %s", value, selector)), nil
+	bs.Logger.Debug().Str("selector", selector).Str("value", value).Msg("成功设置选择器")
+	return mcp.NewToolResultText(fmt.Sprintf("在选择器 %s 中选择了值 %s", selector, value)), nil
 }
 
 // handleHover handles the hover action on a specified element.
