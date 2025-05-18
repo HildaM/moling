@@ -705,6 +705,82 @@ func (bs *BrowserServer) handleEvaluate(ctx context.Context, request mcp.CallToo
 	runCtx, cancelFunc := context.WithTimeout(bs.Context, timeoutDuration)
 	defer cancelFunc()
 
+	// 检测脚本是否为简单的DOM属性访问(如querySelector().href)
+	simplePropertyAccess := regexp.MustCompile(`document\.querySelector\([^)]+\)(\.[a-zA-Z0-9_]+)+`)
+	if simplePropertyAccess.MatchString(script) {
+		bs.Logger.Debug().Msg("检测到简单的DOM属性访问，使用安全包装处理")
+
+		// 对于简单属性访问，我们创建一个更安全的版本
+		safeScript := fmt.Sprintf(`
+			(function() {
+				try {
+					// 提取选择器部分
+					const result = %s;
+					return { success: true, result: result };
+				} catch(e) {
+					return { success: false, error: e.message };
+				}
+			})()
+		`, script)
+
+		var result interface{}
+		err := chromedp.Run(runCtx, chromedp.Evaluate(safeScript, &result))
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Errorf("执行安全包装脚本失败: %v", err).Error()), nil
+		}
+
+		// 处理结果
+		if resultMap, ok := result.(map[string]interface{}); ok {
+			if success, exists := resultMap["success"].(bool); exists && !success {
+				if errorMsg, hasError := resultMap["error"].(string); hasError {
+					bs.Logger.Debug().Str("error", errorMsg).Msg("DOM属性访问出错，尝试使用可选链操作符")
+
+					// 如果是属性访问错误，尝试使用可选链操作符重写脚本
+					// 将.替换为?.以启用安全访问
+					safeAccessScript := strings.Replace(script, "querySelector(", "querySelector(", -1)
+					safeAccessScript = regexp.MustCompile(`\.([a-zA-Z0-9_]+)`).ReplaceAllString(safeAccessScript, "?.$1")
+
+					bs.Logger.Debug().Str("safeScript", safeAccessScript).Msg("使用可选链重写脚本")
+
+					finalScript := fmt.Sprintf(`
+						(function() {
+							try {
+								const result = %s;
+								return { success: true, result: result };
+							} catch(e) {
+								return { success: false, error: e.message };
+							}
+						})()
+					`, safeAccessScript)
+
+					err := chromedp.Run(runCtx, chromedp.Evaluate(finalScript, &result))
+					if err != nil {
+						return mcp.NewToolResultError(fmt.Errorf("执行可选链脚本失败: %v", err).Error()), nil
+					}
+
+					// 再次检查结果
+					if resultMap, ok := result.(map[string]interface{}); ok {
+						if success, exists := resultMap["success"].(bool); exists {
+							if success {
+								if actualResult, hasResult := resultMap["result"]; hasResult {
+									if actualResult == nil {
+										return mcp.NewToolResultText("脚本执行成功，但元素或其属性不存在(结果为null)"), nil
+									}
+									return mcp.NewToolResultText(fmt.Sprintf("脚本执行成功，结果: %v", actualResult)), nil
+								}
+							} else if errorMsg, hasError := resultMap["error"].(string); hasError {
+								return mcp.NewToolResultError(fmt.Sprintf("脚本执行遇到错误(可选链): %s", errorMsg)), nil
+							}
+						}
+					}
+				}
+			} else if success && resultMap["result"] != nil {
+				// 成功获取结果
+				return mcp.NewToolResultText(fmt.Sprintf("脚本执行成功，结果: %v", resultMap["result"])), nil
+			}
+		}
+	}
+
 	// 始终检查脚本并包装，确保可以处理return语句和DOM操作
 	hasReturnStatement := strings.Contains(script, "return ") && !strings.HasPrefix(script, "(function")
 	hasDOMSelector := strings.Contains(script, "querySelector") || strings.Contains(script, "getElementById") ||
@@ -774,6 +850,30 @@ func (bs *BrowserServer) handleEvaluate(ctx context.Context, request mcp.CallToo
 			}
 		}
 
+		// 检查脚本是否包含可能导致空引用的属性访问
+		scriptWithSafeAccess := script
+		if hasDOMSelector && strings.Contains(script, ".") {
+			// 尝试添加可选链操作符来防止null/undefined引用错误
+			bs.Logger.Debug().Msg("添加可选链操作符防止null引用错误")
+
+			// 不是所有版本的Chrome都支持可选链，所以我们使用更兼容的方法
+			scriptWithSafeAccess = fmt.Sprintf(`
+				// 包装所有querySelector调用，添加空值检查
+				const __safeSelector = (fn) => {
+					try {
+						const el = fn();
+						return el || null;
+					} catch(e) {
+						console.error('选择器错误:', e);
+						return null;
+					}
+				};
+				
+				// 原始脚本
+				%s
+			`, script)
+		}
+
 		// 无论是否包含DOM选择器，都包装脚本以处理return语句和错误捕获
 		wrappedScript := fmt.Sprintf(`
 			(function() { 
@@ -788,7 +888,7 @@ func (bs *BrowserServer) handleEvaluate(ctx context.Context, request mcp.CallToo
 					};
 				}
 			})()
-		`, script)
+		`, scriptWithSafeAccess)
 
 		script = wrappedScript
 	}
@@ -837,6 +937,41 @@ func (bs *BrowserServer) handleEvaluate(ctx context.Context, request mcp.CallToo
 					return mcp.NewToolResultError(fmt.Errorf("尝试所有方法后仍无法执行脚本: %v", err).Error()), nil
 				}
 			}
+		} else if strings.Contains(err.Error(), "Cannot read properties of null") ||
+			strings.Contains(err.Error(), "Cannot read property") {
+			// 处理空引用错误
+			bs.Logger.Debug().Msg("检测到空引用错误，尝试使用更安全的脚本")
+
+			// 使用更安全的脚本重试
+			saferScript := fmt.Sprintf(`
+				(function() {
+					try {
+						// 包装querySelector调用，防止null引用错误
+						const __safeQuery = (selector) => {
+							try { return document.querySelector(selector); } catch(e) { return null; }
+						};
+						
+						const __safeGet = (obj, prop) => {
+							if (obj === null || obj === undefined) return null;
+							try { return obj[prop]; } catch(e) { return null; }
+						};
+						
+						// 重写原始脚本，使用安全函数
+						const result = (function() {
+							%s
+						})();
+						
+						return { success: true, result: result };
+					} catch(e) {
+						return { success: false, error: e.message, details: '空引用处理失败' };
+					}
+				})()
+			`, scriptWithSimpleSafeCheck(script))
+
+			err = chromedp.Run(runCtx, chromedp.Evaluate(saferScript, &result))
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Errorf("安全脚本执行失败: %v", err).Error()), nil
+			}
 		} else {
 			return mcp.NewToolResultError(fmt.Errorf("执行脚本失败: %v", err).Error()), nil
 		}
@@ -847,18 +982,48 @@ func (bs *BrowserServer) handleEvaluate(ctx context.Context, request mcp.CallToo
 		// 先检查是否有错误
 		if success, exists := resultMap["success"].(bool); exists && !success {
 			if errorMsg, hasError := resultMap["error"].(string); hasError {
+				// 对于特定类型的错误添加更详细的解释
+				if strings.Contains(errorMsg, "Cannot read properties of null") {
+					errorDetails := "发生空引用错误，可能是尝试访问不存在的DOM元素或其属性。" +
+						"请确认元素选择器是否正确，或在访问属性前先检查元素是否存在。"
+					return mcp.NewToolResultError(fmt.Sprintf("脚本执行遇到错误: %s\n%s", errorMsg, errorDetails)), nil
+				}
 				return mcp.NewToolResultError(fmt.Sprintf("脚本执行遇到错误: %s", errorMsg)), nil
 			}
 		}
 
 		// 如果有result字段，则返回它，这是我们包装后的结果
 		if actualResult, hasResult := resultMap["result"]; hasResult && resultMap["success"] == true {
+			// 检查结果是否为null
+			if actualResult == nil {
+				return mcp.NewToolResultText("脚本执行成功，但结果为null(可能是元素或属性不存在)"), nil
+			}
 			result = actualResult
 		}
 	}
 
 	bs.Logger.Debug().Interface("result", result).Msg("脚本执行成功")
 	return mcp.NewToolResultText(fmt.Sprintf("脚本执行成功，结果: %v", result)), nil
+}
+
+// 将脚本中的简单属性访问转换为安全的检查方式
+func scriptWithSimpleSafeCheck(script string) string {
+	// 替换document.querySelector
+	safeScript := regexp.MustCompile(`document\.querySelector\(([^)]+)\)`).
+		ReplaceAllString(script, `__safeQuery($1)`)
+
+	// 替换属性访问 .property 为 __safeGet(obj, 'property')
+	// 这是一个简化的处理，实际情况可能需要更复杂的AST解析
+	propertyAccessPattern := regexp.MustCompile(`(\w+)\.(\w+)`)
+	for {
+		newScript := propertyAccessPattern.ReplaceAllString(safeScript, `__safeGet($1, '$2')`)
+		if newScript == safeScript {
+			break
+		}
+		safeScript = newScript
+	}
+
+	return safeScript
 }
 
 func (bs *BrowserServer) Close() error {
