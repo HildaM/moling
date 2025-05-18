@@ -355,16 +355,31 @@ func (bs *BrowserServer) handleClick(ctx context.Context, request mcp.CallToolRe
 	if !ok {
 		return mcp.NewToolResultError(fmt.Sprintf("selector must be a string:%v", selector)), nil
 	}
-	runCtx, cancelFunc := context.WithTimeout(bs.Context, time.Duration(bs.config.SelectorQueryTimeout)*time.Second)
+
+	bs.Logger.Debug().Str("selector", selector).Msg("Attempting to click element")
+
+	// Use a longer timeout for the click operation, which may take longer than simple queries
+	timeoutDuration := time.Duration(bs.config.SelectorQueryTimeout*3) * time.Second
+	runCtx, cancelFunc := context.WithTimeout(bs.Context, timeoutDuration)
 	defer cancelFunc()
-	err := chromedp.Run(runCtx,
-		chromedp.WaitReady("body", chromedp.ByQuery), // 等待页面就绪
-		chromedp.WaitVisible(selector, chromedp.ByQuery),
-		chromedp.Click(selector, chromedp.NodeVisible),
-	)
+
+	// Split the operations to better identify which one is causing the timeout
+	err := chromedp.Run(runCtx, chromedp.WaitReady("body", chromedp.ByQuery))
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Errorf("failed waiting for body to be ready: %v", err).Error()), nil
+	}
+
+	err = chromedp.Run(runCtx, chromedp.WaitVisible(selector, chromedp.ByQuery))
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Errorf("failed waiting for element to be visible: %v", err).Error()), nil
+	}
+
+	err = chromedp.Run(runCtx, chromedp.Click(selector, chromedp.NodeVisible))
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Errorf("failed to click element: %v", err).Error()), nil
 	}
+
+	bs.Logger.Debug().Str("selector", selector).Msg("Successfully clicked element")
 	return mcp.NewToolResultText(fmt.Sprintf("Clicked element %s", selector)), nil
 }
 
@@ -380,12 +395,26 @@ func (bs *BrowserServer) handleFill(ctx context.Context, request mcp.CallToolReq
 		return mcp.NewToolResultError(fmt.Sprintf("failed to fill input field: %v, selector:%v", request.Params.Arguments["value"], selector)), nil
 	}
 
-	runCtx, cancelFunc := context.WithTimeout(bs.Context, time.Duration(bs.config.SelectorQueryTimeout)*time.Second)
+	bs.Logger.Debug().Str("selector", selector).Str("value", value).Msg("Attempting to fill input field")
+
+	// Use a longer timeout for input operations
+	timeoutDuration := time.Duration(bs.config.SelectorQueryTimeout*3) * time.Second
+	runCtx, cancelFunc := context.WithTimeout(bs.Context, timeoutDuration)
 	defer cancelFunc()
-	err := chromedp.Run(runCtx, chromedp.SendKeys(selector, value, chromedp.NodeVisible))
+
+	// First wait for the element to be visible
+	err := chromedp.Run(runCtx, chromedp.WaitVisible(selector, chromedp.ByQuery))
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to fill input field: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Errorf("failed waiting for input field to be visible: %v", err).Error()), nil
 	}
+
+	// Then send keys to it
+	err = chromedp.Run(runCtx, chromedp.SendKeys(selector, value, chromedp.NodeVisible))
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Errorf("failed to fill input field: %v", err).Error()), nil
+	}
+
+	bs.Logger.Debug().Str("selector", selector).Msg("Successfully filled input field")
 	return mcp.NewToolResultText(fmt.Sprintf("Filled input %s with value %s", selector, value)), nil
 }
 
@@ -398,12 +427,27 @@ func (bs *BrowserServer) handleSelect(ctx context.Context, request mcp.CallToolR
 	if !ok {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to select value:%v", request.Params.Arguments["value"])), nil
 	}
-	runCtx, cancelFunc := context.WithTimeout(bs.Context, time.Duration(bs.config.SelectorQueryTimeout)*time.Second)
+
+	bs.Logger.Debug().Str("selector", selector).Str("value", value).Msg("Attempting to select value")
+
+	// Use a longer timeout for selection operations
+	timeoutDuration := time.Duration(bs.config.SelectorQueryTimeout*3) * time.Second
+	runCtx, cancelFunc := context.WithTimeout(bs.Context, timeoutDuration)
 	defer cancelFunc()
-	err := chromedp.Run(runCtx, chromedp.SetValue(selector, value, chromedp.NodeVisible))
+
+	// First wait for the element to be visible
+	err := chromedp.Run(runCtx, chromedp.WaitVisible(selector, chromedp.ByQuery))
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Errorf("failed waiting for select element to be visible: %v", err).Error()), nil
+	}
+
+	// Then set the value
+	err = chromedp.Run(runCtx, chromedp.SetValue(selector, value, chromedp.NodeVisible))
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Errorf("failed to select value: %v", err).Error()), nil
 	}
+
+	bs.Logger.Debug().Str("selector", selector).Str("value", value).Msg("Successfully selected value")
 	return mcp.NewToolResultText(fmt.Sprintf("Selected value %s for element %s", value, selector)), nil
 }
 
@@ -413,13 +457,28 @@ func (bs *BrowserServer) handleHover(ctx context.Context, request mcp.CallToolRe
 	if !ok {
 		return mcp.NewToolResultError(fmt.Sprintf("selector must be a string:%v", selector)), nil
 	}
-	var res bool
-	runCtx, cancelFunc := context.WithTimeout(bs.Context, time.Duration(bs.config.SelectorQueryTimeout)*time.Second)
+
+	bs.Logger.Debug().Str("selector", selector).Msg("Attempting to hover over element")
+
+	// Use a longer timeout for hover operations
+	timeoutDuration := time.Duration(bs.config.SelectorQueryTimeout*3) * time.Second
+	runCtx, cancelFunc := context.WithTimeout(bs.Context, timeoutDuration)
 	defer cancelFunc()
-	err := chromedp.Run(runCtx, chromedp.Evaluate(`document.querySelector('`+selector+`').dispatchEvent(new Event('mouseover'))`, &res))
+
+	// First wait for the element to be visible
+	err := chromedp.Run(runCtx, chromedp.WaitVisible(selector, chromedp.ByQuery))
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Errorf("failed waiting for element to be visible: %v", err).Error()), nil
+	}
+
+	// Then hover over it using JavaScript because chromedp.MouseOver might be unreliable
+	var res bool
+	err = chromedp.Run(runCtx, chromedp.Evaluate(`document.querySelector('`+selector+`').dispatchEvent(new Event('mouseover'))`, &res))
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Errorf("failed to hover over element: %v", err).Error()), nil
 	}
+
+	bs.Logger.Debug().Str("selector", selector).Bool("result", res).Msg("Successfully hovered over element")
 	return mcp.NewToolResultText(fmt.Sprintf("Hovered over element %s, result:%t", selector, res)), nil
 }
 

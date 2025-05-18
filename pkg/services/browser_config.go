@@ -99,7 +99,7 @@ func NewBrowserConfig() *BrowserConfig {
 		Headless:             false,
 		Timeout:              30,
 		URLTimeout:           10,
-		SelectorQueryTimeout: 10,
+		SelectorQueryTimeout: 20,
 		UserAgent:            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
 		DefaultLanguage:      "en-US",
 		DataPath:             filepath.Join(os.TempDir(), ".moling", "data"),
