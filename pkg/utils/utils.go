@@ -28,12 +28,11 @@ import (
 	"strings"
 )
 
-// CreateDirectory checks if a directory exists, and creates it if it doesn't
+// CreateDirectory 检查目录是否存在，如果不存在则创建目录
 func CreateDirectory(path string) error {
-	_, err := os.Stat(path)
-	if err != nil {
+	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
-			err = os.MkdirAll(path, 0o755)
+			err = os.MkdirAll(path, 0o755) // 创建目录 权限 755
 			if err != nil {
 				return err
 			}

@@ -39,17 +39,17 @@ import (
 
 const (
 	// browser 工具
-	BrowserDataPath                         = "browser" // Path to store browser data
-	BrowserServerName comm.MoLingServerType = "Browser"
+	BrowserDataPath                         = "browser" // 存储浏览器缓存数据路径
+	BrowserServerName comm.MoLingServerType = "Browser" // 浏览器服务枚举名称
 )
 
 // BrowserServer represents the configuration for the browser service.
 type BrowserServer struct {
-	abstract.MLService
-	config       *BrowserConfig
-	name         string // The name of the service
-	cancelAlloc  context.CancelFunc
-	cancelChrome context.CancelFunc
+	abstract.MLService                    // 继承MLService
+	config             *BrowserConfig     // 浏览器配置
+	name               string             // 服务名称
+	cancelAlloc        context.CancelFunc // 资源清理方法
+	cancelChrome       context.CancelFunc // 浏览器清理方法
 }
 
 // NewBrowserServer creates a new BrowserServer instance with the given context and configuration.
@@ -65,6 +65,7 @@ func NewBrowserServer(ctx context.Context) (abstract.Service, error) {
 	if !ok {
 		return nil, fmt.Errorf("BrowserServer: invalid logger type: %T", ctx.Value(comm.MoLingLoggerKey))
 	}
+	// 添加服务名称
 	loggerNameHook := zerolog.HookFunc(func(e *zerolog.Event, level zerolog.Level, msg string) {
 		e.Str("Service", string(BrowserServerName))
 	})
@@ -94,22 +95,22 @@ func (bs *BrowserServer) Init() error {
 
 	// 创建浏览器上下文
 	opts := append(
-		chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.UserAgent(bs.config.UserAgent),
-		chromedp.Flag("lang", bs.config.DefaultLanguage),
-		chromedp.Flag("disable-blink-features", "AutomationControlled"),
-		chromedp.Flag("enable-automation", false),
-		chromedp.Flag("disable-features", "Translate"),
-		chromedp.Flag("headless", bs.config.Headless),
-		chromedp.Flag("hide-scrollbars", false),
-		chromedp.Flag("mute-audio", true),
-		chromedp.Flag("disable-infobars", true),
-		chromedp.Flag("disable-extensions", true),
-		chromedp.Flag("CommandLineFlagSecurityWarningsEnabled", false),
-		chromedp.CombinedOutput(bs.Logger),
-		chromedp.WindowSize(1280, 800),
-		chromedp.UserDataDir(bs.config.BrowserDataPath),
-		chromedp.IgnoreCertErrors,
+		chromedp.DefaultExecAllocatorOptions[:],                         // 默认浏览器配置
+		chromedp.UserAgent(bs.config.UserAgent),                         // 用户代理
+		chromedp.Flag("lang", bs.config.DefaultLanguage),                // 语言
+		chromedp.Flag("disable-blink-features", "AutomationControlled"), // 禁用自动化控制
+		chromedp.Flag("enable-automation", false),                       // 禁用自动化
+		chromedp.Flag("disable-features", "Translate"),                  // 禁用翻译
+		chromedp.Flag("headless", bs.config.Headless),                   // 是否无头模式
+		chromedp.Flag("hide-scrollbars", false),                         // 是否隐藏滚动条
+		chromedp.Flag("mute-audio", true),                               // 是否静音
+		chromedp.Flag("disable-infobars", true),                         // 禁用信息栏
+		chromedp.Flag("disable-extensions", true),                       // 禁用扩展
+		chromedp.Flag("CommandLineFlagSecurityWarningsEnabled", false),  // 禁用安全警告
+		chromedp.CombinedOutput(bs.Logger),                              // 输出日志
+		chromedp.WindowSize(1280, 800),                                  // 窗口大小
+		chromedp.UserDataDir(bs.config.BrowserDataPath),                 // 用户数据目录
+		chromedp.IgnoreCertErrors,                                       // 忽略证书错误
 	)
 	bs.Context, bs.cancelAlloc = chromedp.NewExecAllocator(context.Background(), opts...)
 
@@ -281,12 +282,13 @@ func (bs *BrowserServer) Init() error {
 
 // initBrowser 初始化浏览器
 func (bs *BrowserServer) initBrowser(userDataDir string) error {
+	// 检查用户数据目录是否存在
 	_, err := os.Stat(userDataDir)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to stat user data directory: %v", err)
 	}
 
-	// Check if the directory exists, if it does, we can reuse it
+	// 检查目录是否存在，如果存在，可以重用它
 	if err == nil {
 		//  判断浏览器运行锁
 		singletonLock := filepath.Join(userDataDir, "SingletonLock")
@@ -300,7 +302,7 @@ func (bs *BrowserServer) initBrowser(userDataDir string) error {
 		}
 		return nil
 	}
-	// Create the directory
+	// 创建目录
 	err = os.MkdirAll(userDataDir, 0755)
 	if err != nil {
 		return fmt.Errorf("failed to create user data directory: %v", err)

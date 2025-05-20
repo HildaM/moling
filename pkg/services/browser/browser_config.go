@@ -94,6 +94,7 @@ func (cfg *BrowserConfig) Check() error {
 }
 
 // NewBrowserConfig creates a new BrowserConfig with default values.
+// TODO 待配置化
 func NewBrowserConfig() *BrowserConfig {
 	return &BrowserConfig{
 		Headless:             false,
