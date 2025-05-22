@@ -142,7 +142,7 @@ func initSingleService(ctx context.Context, serviceType comm.MoLingServerType, s
 // initServices 批量初始化服务
 func initServices(ctx context.Context, configJson map[string]interface{}, logger zerolog.Logger) ([]abstract.Service, map[string]func() error, error) {
 	var moduleList []string
-	if mlConfig.Module != "all" {
+	if mlConfig.Module != "Browser" {
 		moduleList = strings.Split(mlConfig.Module, ",")
 	}
 
@@ -151,8 +151,16 @@ func initServices(ctx context.Context, configJson map[string]interface{}, logger
 
 	for serviceName, serviceFactory := range services.ServiceList() {
 		// 检查模块是否需要加载
-		if len(moduleList) > 0 && !utils.StringInSlice(string(serviceName), moduleList) {
-			continue
+		if len(moduleList) > 0 {
+			// 如果模块列表不为空，则检查模块是否在列表中
+			if !utils.StringInSlice(string(serviceName), moduleList) {
+				logger.
+					Debug().
+					Str("moduleName", string(serviceName)).
+					Msgf("initServices debug, module %s not in %v, skip", string(serviceName), moduleList)
+				continue
+			}
+			logger.Debug().Str("moduleName", string(serviceName)).Msgf("initServices debug, starting %s service", serviceName)
 		}
 
 		// 使用通用的初始化函数
