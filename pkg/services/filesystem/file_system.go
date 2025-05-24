@@ -83,7 +83,7 @@ func NewFilesystemServer(ctx context.Context) (abstract.Service, error) {
 		config:    fc,
 	}
 
-	err = fs.Init()
+	err = fs.InitResources()
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize filesystem server: %v", err)
 	}

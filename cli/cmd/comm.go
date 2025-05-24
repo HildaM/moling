@@ -142,7 +142,7 @@ func initSingleService(ctx context.Context, serviceType comm.MoLingServerType, s
 // initServices 批量初始化服务
 func initServices(ctx context.Context, configJson map[string]interface{}, logger zerolog.Logger) ([]abstract.Service, map[string]func() error, error) {
 	var moduleList []string
-	if mlConfig.Module != "Browser" {
+	if mlConfig.Module != "all" {
 		moduleList = strings.Split(mlConfig.Module, ",")
 	}
 
